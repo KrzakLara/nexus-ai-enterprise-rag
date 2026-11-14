@@ -22,7 +22,15 @@ PERSONAS = [
     ("hr@northstar.demo", "northstar", "member", ["hr"]),
     ("sales@northstar.demo", "northstar", "member", ["sales", "legal"]),
     ("finance@otherco.demo", "otherco", "member", ["finance"]),
+    # Phase 3 document intelligence: a reviewer (may correct / approve / reject extractions) and
+    # a procurement member (may read procurement documents and their extractions, not review them)
+    ("reviewer@northstar.demo", "northstar", "reviewer", ["procurement", "finance", "legal"]),
+    ("procurement@northstar.demo", "northstar", "member", ["procurement"]),
 ]
+# Phase 3 demo documents from the frozen evaluation corpus (fictional), granted ONLY to the
+# 'procurement' group so the Phase 2 finance / HR retrieval demo is unaffected.
+DOCINTEL_DEMO = ["di-c01", "di-c09", "di-c02", "di-c06", "di-c08", "di-i01", "di-i04", "di-i06", "di-i07",
+                 "di-i10", "di-o01"]
 DATA = [
     ("northstar", "finance@northstar.demo", "atlas_supplier_agreement.txt", ["finance", "legal"]),
     ("northstar", "finance@northstar.demo", "cygnus_cloud_agreement.txt", ["finance", "legal"]),
@@ -70,6 +78,7 @@ def main():
                 db.add(Chunk(id=chunk_id, document_id=doc_id, page_number=1, position=pos,
                              content=piece))
         db.commit()
+        seed_document_intelligence(db)
     print("Seeded synthetic data. Demo password:", DEMO_PASSWORD)
     for email, _, _, _ in PERSONAS:
         print(" -", email)
@@ -83,6 +92,69 @@ def main():
         stats = embed_pending_chunks(db, get_embedder())  # idempotent; raises on model failure
         db.commit()
     print(f"Embeddings: {stats.embedded} new, {stats.skipped_up_to_date} already up to date")
+
+def seed_document_intelligence(db) -> None:
+    """Add the Phase 3 demo documents and store structure + rules extraction for every document
+    that has none yet (idempotent). Scanned PDFs need Tesseract (present in the Docker image)."""
+    import json
+
+    from backend.app.docintel import service
+    from backend.app.docintel.ocr import ocr_available
+    from backend.app.docintel.parsing import parse_document
+    from backend.app.models import DocumentProcessing
+
+    corpus = root / "eval" / "docintel"
+    labels = {r["id"]: r for r in map(json.loads, (corpus / "labels.jsonl").read_text(encoding="utf-8").splitlines())}
+    admin = db.scalar(select(User).where(User.email == "admin@northstar.demo"))
+    for lid in DOCINTEL_DEMO:
+        lab = labels[lid]
+        doc_id = str(uuid5(NAMESPACE_DNS, "northstar:" + lid))
+        if db.get(Document, doc_id):
+            continue
+        if lab["scanned_pages"] and not ocr_available():
+            print(f" - {lid}: skipped (scanned; Tesseract not installed)")
+            continue
+        path = corpus / lab["file"]
+        data = path.read_bytes()
+        parsed = parse_document(path.name, data)
+        pages = parsed.page_texts()
+        key = doc_id + path.suffix
+        (settings.storage_dir / key).write_bytes(data)
+        doc = Document(id=doc_id, tenant_id="northstar", owner_id=admin.id, title=path.stem, filename=path.name,
+                       storage_key=key, sha256=sha256(data).hexdigest(), page_count=len(pages),
+                       extracted_fields=extract_contract_fields(pages))
+        db.add(doc)
+        db.flush()
+        db.add(DocumentGrant(document_id=doc_id, group_name="procurement"))
+        for number, page in enumerate(pages, 1):
+            for pos, piece in enumerate(split_page(page)):
+                db.add(Chunk(id=str(uuid5(NAMESPACE_DNS, f"{doc_id}:{number}:{pos}")), document_id=doc_id,
+                             page_number=number, position=pos, content=piece))
+        service.store_structure(db, doc, parsed)
+        db.flush()
+    for doc in db.scalars(select(Document)).all():
+        if db.get(DocumentProcessing, doc.id):
+            continue
+        path = settings.storage_dir / doc.storage_key
+        if not path.is_file():
+            continue
+        try:
+            service.store_structure(db, doc, parse_document(doc.filename, path.read_bytes()))
+        except Exception as exc:  # noqa: BLE001
+            print(f" - {doc.filename}: not parsed ({str(exc)[:80]})")
+            continue
+    db.flush()
+    from backend.app.models import Extraction
+
+    for row in db.scalars(select(DocumentProcessing)).all():
+        if db.scalar(select(Extraction).where(Extraction.document_id == row.document_id)):
+            continue
+        doc = db.get(Document, row.document_id)
+        owner = db.get(User, doc.owner_id)
+        service.process(db, owner, doc)
+    db.commit()
+    print("Document intelligence: structure + extraction stored for", db.query(DocumentProcessing).count(), "documents")
+
 
 if __name__ == "__main__":
     main()
