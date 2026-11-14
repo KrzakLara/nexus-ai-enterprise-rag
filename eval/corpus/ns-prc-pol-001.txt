@@ -1,0 +1,22 @@
+NORTHSTAR PROCUREMENT POLICY
+Policy ID: NS-PRC-POL-001
+Owner: Procurement
+Valid from: 2026-01-01
+
+1. Principles
+Northstar buys goods and services through a transparent and competitive process. Procurement decisions are based on total cost of ownership, quality, delivery reliability and sustainability, not only on the purchase price.
+
+2. Competitive quotes
+Purchases with an expected value below EUR 10,000 may be awarded after one written quote. For purchases between EUR 10,000 and EUR 100,000 the buyer must obtain at least three written quotes. Purchases above EUR 100,000 require a formal tender managed by the Procurement department.
+
+3. Single-source exceptions
+A purchase may be awarded to a single supplier without competition only if there is a documented technical reason, such as a proprietary spare part. Single-source exceptions above EUR 10,000 must be approved by the Head of Procurement.
+
+4. Supplier onboarding
+New suppliers must pass a basic due diligence check, which includes company registration, sanctions screening and bank account verification. Suppliers with an annual spend above EUR 50,000 must also sign the Northstar Supplier Code of Conduct.
+
+5. Contract requirements
+Purchases above EUR 25,000 per year require a written contract reviewed by Legal. Contracts must state the price adjustment rules, the notice period and the liability cap.
+
+6. Conflicts of interest
+Employees involved in a purchasing decision must declare any personal relationship with a supplier before the decision is made. The declaration is stored in the procurement file.

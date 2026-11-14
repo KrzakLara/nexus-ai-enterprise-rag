@@ -1,0 +1,478 @@
+{
+  "split": "test",
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "embedding_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "mt_models": {
+    "Helsinki-NLP/opus-mt-sla-en": "90572be08bdc4c58ecbcd2b22ffe167f73992e4a",
+    "Helsinki-NLP/opus-mt-en-sla": "0bc26914f2f82c3dd5b235e420aa2c711a5ed3d8"
+  },
+  "mt_load_ms": 3213,
+  "mt_parameters": 149585408,
+  "mt_weights_mb_fp32": 570.6,
+  "translation_ms": {
+    "p50": 521.1,
+    "p95": 858.9
+  },
+  "language_detection_accuracy": 1.0,
+  "identifiers_preserved_by_translation": "7/7",
+  "variants": {
+    "semantic": {
+      "all": {
+        "n": 41,
+        "recall@1": 0.5081,
+        "recall@5": 0.8496,
+        "recall@10": 0.9268,
+        "precision@5": 0.2195,
+        "hit_rate@5": 0.878,
+        "mrr@10": 0.7196,
+        "ndcg@5": 0.737
+      },
+      "by_category": {
+        "cross_language": {
+          "n": 6,
+          "recall@1": 0.1667,
+          "recall@5": 0.3333,
+          "recall@10": 0.5,
+          "precision@5": 0.0667,
+          "hit_rate@5": 0.3333,
+          "mrr@10": 0.2708,
+          "ndcg@5": 0.2718
+        },
+        "distractor": {
+          "n": 5,
+          "recall@1": 0.4,
+          "recall@5": 0.8,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.5889,
+          "ndcg@5": 0.6177
+        },
+        "exact_identifier": {
+          "n": 5,
+          "recall@1": 0.7,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.9,
+          "ndcg@5": 0.9262
+        },
+        "croatian": {
+          "n": 5,
+          "recall@1": 0.7,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.9,
+          "ndcg@5": 0.9262
+        },
+        "paraphrase": {
+          "n": 5,
+          "recall@1": 0.3,
+          "recall@5": 0.9,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.58,
+          "ndcg@5": 0.6429
+        },
+        "keyword": {
+          "n": 5,
+          "recall@1": 1.0,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 1.0,
+          "mrr@10": 1.0,
+          "ndcg@5": 1.0
+        },
+        "numeric_date": {
+          "n": 6,
+          "recall@1": 0.5,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2667,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.7556,
+          "ndcg@5": 0.8011
+        },
+        "multi_document": {
+          "n": 4,
+          "recall@1": 0.3333,
+          "recall@5": 0.8333,
+          "recall@10": 1.0,
+          "precision@5": 0.35,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.875,
+          "ndcg@5": 0.8038
+        }
+      },
+      "retrieval_wall_ms_excluding_translation": {
+        "p50": 45.4,
+        "p95": 70.2
+      },
+      "leaked_candidate_chunks": 0
+    },
+    "semantic+translated": {
+      "all": {
+        "n": 41,
+        "recall@1": 0.4146,
+        "recall@5": 0.813,
+        "recall@10": 0.9512,
+        "precision@5": 0.2098,
+        "hit_rate@5": 0.8537,
+        "mrr@10": 0.6389,
+        "ndcg@5": 0.6482
+      },
+      "by_category": {
+        "cross_language": {
+          "n": 6,
+          "recall@1": 0.3333,
+          "recall@5": 0.6667,
+          "recall@10": 0.8333,
+          "precision@5": 0.1333,
+          "hit_rate@5": 0.6667,
+          "mrr@10": 0.4361,
+          "ndcg@5": 0.4696
+        },
+        "distractor": {
+          "n": 5,
+          "recall@1": 0.4,
+          "recall@5": 0.8,
+          "recall@10": 0.8,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.55,
+          "ndcg@5": 0.5848
+        },
+        "exact_identifier": {
+          "n": 5,
+          "recall@1": 0.5,
+          "recall@5": 0.7,
+          "recall@10": 1.0,
+          "precision@5": 0.16,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.7286,
+          "ndcg@5": 0.6488
+        },
+        "croatian": {
+          "n": 5,
+          "recall@1": 0.6,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.7333,
+          "ndcg@5": 0.8088
+        },
+        "paraphrase": {
+          "n": 5,
+          "recall@1": 0.1,
+          "recall@5": 0.7,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.4286,
+          "ndcg@5": 0.429
+        },
+        "keyword": {
+          "n": 5,
+          "recall@1": 0.6,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.75,
+          "ndcg@5": 0.8123
+        },
+        "numeric_date": {
+          "n": 6,
+          "recall@1": 0.5,
+          "recall@5": 0.8333,
+          "recall@10": 1.0,
+          "precision@5": 0.2333,
+          "hit_rate@5": 0.8333,
+          "mrr@10": 0.7708,
+          "ndcg@5": 0.7584
+        },
+        "multi_document": {
+          "n": 4,
+          "recall@1": 0.25,
+          "recall@5": 0.8333,
+          "recall@10": 1.0,
+          "precision@5": 0.35,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.75,
+          "ndcg@5": 0.6971
+        }
+      },
+      "retrieval_wall_ms_excluding_translation": {
+        "p50": 78.4,
+        "p95": 93.8
+      },
+      "leaked_candidate_chunks": 0,
+      "vs_baseline": {
+        "delta_ndcg@5_all": -0.0888,
+        "delta_ndcg@5_cross_language": 0.1978,
+        "passes_adoption_rule": false
+      }
+    },
+    "hybrid": {
+      "all": {
+        "n": 41,
+        "recall@1": 0.5447,
+        "recall@5": 0.8089,
+        "recall@10": 0.9024,
+        "precision@5": 0.2146,
+        "hit_rate@5": 0.8293,
+        "mrr@10": 0.7302,
+        "ndcg@5": 0.7339
+      },
+      "by_category": {
+        "cross_language": {
+          "n": 6,
+          "recall@1": 0.1667,
+          "recall@5": 0.3333,
+          "recall@10": 0.5,
+          "precision@5": 0.0667,
+          "hit_rate@5": 0.3333,
+          "mrr@10": 0.2389,
+          "ndcg@5": 0.25
+        },
+        "distractor": {
+          "n": 5,
+          "recall@1": 0.6,
+          "recall@5": 0.8,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.6786,
+          "ndcg@5": 0.6876
+        },
+        "exact_identifier": {
+          "n": 5,
+          "recall@1": 0.7,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.9,
+          "ndcg@5": 0.9262
+        },
+        "croatian": {
+          "n": 5,
+          "recall@1": 0.7,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.9,
+          "ndcg@5": 0.9262
+        },
+        "paraphrase": {
+          "n": 5,
+          "recall@1": 0.4,
+          "recall@5": 0.5,
+          "recall@10": 0.8,
+          "precision@5": 0.16,
+          "hit_rate@5": 0.6,
+          "mrr@10": 0.6222,
+          "ndcg@5": 0.5652
+        },
+        "keyword": {
+          "n": 5,
+          "recall@1": 1.0,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 1.0,
+          "mrr@10": 1.0,
+          "ndcg@5": 1.0
+        },
+        "numeric_date": {
+          "n": 6,
+          "recall@1": 0.5,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2667,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.75,
+          "ndcg@5": 0.8102
+        },
+        "multi_document": {
+          "n": 4,
+          "recall@1": 0.3333,
+          "recall@5": 0.9167,
+          "recall@10": 1.0,
+          "precision@5": 0.4,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.875,
+          "ndcg@5": 0.8002
+        }
+      },
+      "retrieval_wall_ms_excluding_translation": {
+        "p50": 38.1,
+        "p95": 44.5
+      },
+      "leaked_candidate_chunks": 0
+    },
+    "hybrid+translated_both": {
+      "all": {
+        "n": 41,
+        "recall@1": 0.439,
+        "recall@5": 0.8943,
+        "recall@10": 0.9756,
+        "precision@5": 0.2341,
+        "hit_rate@5": 0.9024,
+        "mrr@10": 0.685,
+        "ndcg@5": 0.7209
+      },
+      "by_category": {
+        "cross_language": {
+          "n": 6,
+          "recall@1": 0.5,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.6806,
+          "ndcg@5": 0.7603
+        },
+        "distractor": {
+          "n": 5,
+          "recall@1": 0.2,
+          "recall@5": 0.8,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.8,
+          "mrr@10": 0.4786,
+          "ndcg@5": 0.54
+        },
+        "exact_identifier": {
+          "n": 5,
+          "recall@1": 0.7,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.84,
+          "ndcg@5": 0.8528
+        },
+        "croatian": {
+          "n": 5,
+          "recall@1": 0.6,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.24,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.7667,
+          "ndcg@5": 0.8302
+        },
+        "paraphrase": {
+          "n": 5,
+          "recall@1": 0.1,
+          "recall@5": 0.6,
+          "recall@10": 0.8,
+          "precision@5": 0.2,
+          "hit_rate@5": 0.6,
+          "mrr@10": 0.3867,
+          "ndcg@5": 0.4301
+        },
+        "keyword": {
+          "n": 5,
+          "recall@1": 0.8,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "precision@5": 0.2,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.9,
+          "ndcg@5": 0.9262
+        },
+        "numeric_date": {
+          "n": 6,
+          "recall@1": 0.3333,
+          "recall@5": 0.8333,
+          "recall@10": 1.0,
+          "precision@5": 0.2333,
+          "hit_rate@5": 0.8333,
+          "mrr@10": 0.6905,
+          "ndcg@5": 0.6969
+        },
+        "multi_document": {
+          "n": 4,
+          "recall@1": 0.25,
+          "recall@5": 0.9167,
+          "recall@10": 1.0,
+          "precision@5": 0.4,
+          "hit_rate@5": 1.0,
+          "mrr@10": 0.75,
+          "ndcg@5": 0.7291
+        }
+      },
+      "retrieval_wall_ms_excluding_translation": {
+        "p50": 73.1,
+        "p95": 89.7
+      },
+      "leaked_candidate_chunks": 0,
+      "vs_baseline": {
+        "delta_ndcg@5_all": -0.013,
+        "delta_ndcg@5_cross_language": 0.5103,
+        "passes_adoption_rule": false
+      }
+    }
+  },
+  "translations": {
+    "q002": "NS-FIN-SOP-003 ograničenja za homologaciju",
+    "q004": "What does NS-CMP-SOP-009 require to notify the supervisory authority?",
+    "q006": "Zahtjevi za citiranje OC-PRC-POL-001",
+    "q008": "NS-IT-2026-018 zadržavanje tjednih sigurnosnih kopija",
+    "q010": "Što je SILVER-IBIS-73?",
+    "q012": "Neuspješni pokušaji prijave na računu",
+    "q014": "trosmjerna potvrda o narudžbi za kupnju robe",
+    "q016": "Vrijednost registra poklona iznad 25 EUR",
+    "q018": "EBITDA margina Q3",
+    "q020": "Kodeks postupanja dobavljača godišnji trošak",
+    "q022": "Ako je provajder oblaka previše dolje za mjesec dana, koju naknadu dobivamo?",
+    "q024": "Što da radim ako mi ukradu laptop kompanije?",
+    "q026": "Tko mora potpisati stvarno veliki račun za dobavljača, na primjer pola milijuna eura?",
+    "q028": "Koliko često menadžeri moraju dvostruko provjeriti do čega njihov tim može pristupiti?",
+    "q030": "Možemo li uzeti vaučer od dobavljača kao poklon?",
+    "q032": "Until when do you have to take the vacation days?",
+    "q034": "What is the total capital investment budget for 2027?",
+    "q036": "What are the criteria for evaluating suppliers?",
+    "q038": "How much is the contract fine for the late delivery of the packaging?",
+    "q040": "How many days of vacation do other people's workers have?",
+    "q042": "How long have the daily backups been kept?",
+    "q044": "How many bids should be collected for a purchase worth EUR 50,000?",
+    "q046": "How much revenue was made in the third quarter of 2026?",
+    "q048": "U roku od koliko sati zaposlenik mora prijaviti unutarnji proboj osobnih podataka?",
+    "q050": "Koliko je velika planirana solarna instalacija?",
+    "q052": "Koja je mjesečna naknada za Delta ugovor o podršci?",
+    "q054": "Što je ograničenje odgovornosti u Atlas Industrijskom sporazumu?",
+    "q056": "Koliko brzo voditelj IT dužnosti mora obavijestiti CIO o incidentu prioritet 1?",
+    "q058": "Koliko dugo su potpisani ugovori zadržani?",
+    "q060": "Koliko dugo obveze NDA povjerljivosti preživljavaju nakon završetka sporazuma?",
+    "q062": "Kada treba završiti pregovore o bankama za plan ulaganja iz 2027. godine?",
+    "q064": "Kada će vijeće radova u Grazu biti obaviješteno o reorganizaciji?",
+    "q066": "Koja je ukupna procijenjena godišnja vrijednost industrijskog ugovora Atlas, uključujući izmjenu?",
+    "q068": "Koliko dugo se čuvaju računi i koja politika to definira?",
+    "q070": "Koje su razdoblja obnavljanja sporazuma o logistici Atlas Industrijski i Atlas Logistika?",
+    "q072": "Koja se pravila primjenjuju na pristup povjerljivim dokumentima pri radu od kuće, i jesu li ti pristupi prijavljeni?",
+    "q074": "Koja je kazna za kasno isporuku u Atlas industrijskom sporazumu?",
+    "q076": "Pod kojim zakonom se upravlja sporazum Helix?",
+    "q078": "Koje je razdoblje prijave za neobnavljanje Atlas sporazuma?",
+    "q080": "Koju raspoloživost jamči Cygnus?",
+    "q082": "Until when is a vacation plan being drawn up?",
+    "q084": "Koliko dana plaćenog bolovanja kompanija pokriva?",
+    "q086": "What's the bonus for sales reps?",
+    "q088": "Koji antivirusni softver je obvezan na računalima tvrtke?",
+    "q090": "Što je Othercoov domaći ured dodatak za daljinske radnike?",
+    "q092": "Koja kazna vrijedi ako Helix Consulting isporučuje izvještaj o izboru alata kasno?",
+    "q094": "Što je projekt KESTREL-9?",
+    "q096": "Koja je godišnja vrijednost sporazuma o opskrbi Atlasom?",
+    "q098": "Što je RPO ugovora Otherco Cygnus OC-IT-2026-017?",
+    "q100": "Koliko se tjedno zadržavaju sigurnosne kopije Cygnusa?"
+  }
+}

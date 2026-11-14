@@ -1,0 +1,23 @@
+CYGNUS CLOUD SERVICE LEVEL AGREEMENT
+Agreement ID: OC-IT-2026-017
+Parties: Otherco Ltd (Customer) and Cygnus Cloud Services Ltd (Provider)
+Service start: 2026-02-01
+Term ends: 2028-01-31
+
+1. Covered services
+The Provider hosts the Otherco web shop and the order management system in its Vienna region.
+
+2. Availability commitment
+The Provider commits to a monthly availability of 99.5 percent for production services, excluding announced maintenance windows of up to eight hours per month.
+
+3. Service credits
+If monthly availability falls below 99.5 percent, the Customer receives a service credit of 5 percent of the monthly fee. If availability falls below 98.0 percent, the credit increases to 15 percent of the monthly fee.
+
+4. Support and incident response
+Critical incidents must receive a first response within 60 minutes during business hours and within 2 hours outside business hours.
+
+5. Disaster recovery
+The recovery time objective for production services is 12 hours and the recovery point objective is 4 hours. Disaster recovery tests are performed once per year.
+
+6. Fees and notice
+The monthly service fee is EUR 2,800. Either party may terminate the agreement with 90 days written notice before the end of the term.

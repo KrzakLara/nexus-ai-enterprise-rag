@@ -1,0 +1,13 @@
+CYGNUS CLOUD PLATFORM SERVICE AGREEMENT
+Agreement ID: NS-IT-2026-017
+Counterparty: Cygnus Cloud Services Ltd
+Start date: 2026-04-01
+End date: 2027-04-30
+Annual value: EUR 72,000
+Notice period: 60 days before the end date
+Department: Finance and Legal
+
+Cygnus Cloud Services provides cloud hosting and backup services. The contract
+includes a 99.9% monthly availability target, 24-hour critical issue response,
+and a quarterly security compliance review. It renews automatically unless
+terminated with 60 days written notice before the end date.

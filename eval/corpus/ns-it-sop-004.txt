@@ -1,0 +1,22 @@
+IT INCIDENT MANAGEMENT PROCEDURE
+Procedure ID: NS-IT-SOP-004
+Owner: IT Operations
+Valid from: 2026-01-15
+
+1. Purpose
+This procedure describes how the Northstar IT team records, prioritises and resolves incidents that disrupt IT services. It does not cover personal data breaches, which follow the separate data breach procedure NS-CMP-SOP-009.
+
+2. Priorities
+Incidents are classified into four priorities. Priority 1 means a complete outage of a business-critical system, such as ERP or production planning. Priority 2 means a major degradation or an outage affecting a single site. Priority 3 affects a small group of users. Priority 4 is a minor issue with a workaround.
+
+3. Target resolution times
+The target resolution time is 4 hours for priority 1, 8 hours for priority 2, 3 business days for priority 3 and 10 business days for priority 4. For priority 1 incidents the IT duty manager must inform the CIO within 30 minutes.
+
+4. Major incident process
+For every priority 1 incident a major incident manager is appointed. Status updates are sent to affected users every 60 minutes until the service is restored.
+
+5. Post-incident review
+A post-incident review is required for every priority 1 incident and must be completed within 5 business days after resolution. The review identifies the root cause and preventive actions.
+
+6. External providers
+Incidents caused by external providers, such as Cygnus Cloud Services or Delta Servis, are escalated according to the provider's service level agreement.

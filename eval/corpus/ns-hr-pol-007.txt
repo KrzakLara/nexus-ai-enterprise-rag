@@ -1,0 +1,23 @@
+NORTHSTAR REMOTE AND HYBRID WORK POLICY
+Policy ID: NS-HR-POL-007
+Owner: Human Resources
+Applies to: all Northstar employees
+Valid from: 2026-03-01
+
+1. Eligibility
+Employees in office-based roles may work remotely up to 2 days per week after completing their probation period. Production, warehouse and laboratory roles are not eligible for regular remote work because the work requires physical presence.
+
+2. Core collaboration hours
+All employees must be available for meetings and calls between 10:00 and 15:00 Central European Time, regardless of where they work. Team leads may define one fixed office day per week for their team.
+
+3. Equipment and allowance
+Northstar provides a laptop, a headset and one external monitor for remote work. Employees who work remotely at least one day per week receive a home office allowance of EUR 30 per month, paid with the regular salary.
+
+4. Working from abroad
+Remote work from another country is allowed for a maximum of 20 working days per calendar year and must be approved in advance by the line manager and Human Resources. Remote work from countries outside the European Union requires an additional review by Legal and IT Security.
+
+5. Information security
+Confidential documents may only be accessed through the company VPN. Printing of confidential documents at home is not permitted. Lost or stolen devices must be reported to the IT service desk within 2 hours.
+
+6. Health and safety
+Employees are responsible for a safe home workstation. Human Resources provides an ergonomic checklist that must be completed once per year.

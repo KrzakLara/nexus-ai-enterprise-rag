@@ -1,0 +1,33 @@
+{
+  "selected_on": "dev split only",
+  "family": "identifier+similarity",
+  "policy": {
+    "enabled": true,
+    "min_semantic_similarity": 0.82,
+    "require_identifier_match": true,
+    "accept_on_branch_agreement": false,
+    "agreement_depth": 3
+  },
+  "dev": {
+    "n_answerable": 41,
+    "n_unanswerable": 9,
+    "answerable_recall": 0.878,
+    "unanswerable_detection": 0.7778,
+    "false_abstention_rate": 0.122,
+    "false_answerability_rate": 0.2222,
+    "balanced_accuracy": 0.8279,
+    "answered_with_relevant_in_top5": 0.8537
+  },
+  "test": {
+    "n_answerable": 41,
+    "n_unanswerable": 9,
+    "answerable_recall": 0.8537,
+    "unanswerable_detection": 0.7778,
+    "false_abstention_rate": 0.1463,
+    "false_answerability_rate": 0.2222,
+    "balanced_accuracy": 0.8157,
+    "answered_with_relevant_in_top5": 0.7561
+  },
+  "dataset_sha256": "1a3c160c9645e075db295566e33139ad0f352c89dc1bb01343f9dcd257a1135f",
+  "generated_at": "2026-11-11T21:20:45+00:00"
+}

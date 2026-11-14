@@ -1,0 +1,22 @@
+INVOICE APPROVAL PROCEDURE
+Procedure ID: NS-FIN-SOP-003
+Owner: Accounts Payable
+Valid from: 2026-01-01
+
+1. Scope
+This procedure applies to all supplier invoices received by Northstar entities in Croatia and Austria, including invoices for goods, services, licences and freight.
+
+2. Invoice receipt
+Supplier invoices must be sent to the central accounts payable mailbox or through the e-invoicing network. Invoices sent directly to employees are not processed until they are forwarded to accounts payable. Every invoice must reference a valid purchase order number, except for utility bills and public fees.
+
+3. Three-way match
+Accounts payable matches each invoice against the purchase order and the goods receipt. If the invoice amount differs from the purchase order by more than 2 percent or EUR 200, whichever is lower, the invoice is blocked and sent to the buyer for clarification.
+
+4. Approval limits
+Invoices up to EUR 5,000 are approved by the cost centre manager. Invoices above EUR 5,000 and up to EUR 25,000 also require approval by the department head. Invoices above EUR 25,000 require additional approval by the CFO. Invoices above EUR 250,000 require approval by two members of the Management Board.
+
+5. Payment runs
+Payment runs take place every Tuesday and Thursday. Approved invoices are paid on the last payment run before the due date. Early payment discounts are used when the discount is at least 1.5 percent.
+
+6. Archiving
+Approved invoices and their approval history are archived in the document management system and retained for 11 years in line with the data retention policy.

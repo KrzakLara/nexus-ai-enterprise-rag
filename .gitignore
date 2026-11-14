@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.db
+*.sqlite3
+data/
+.venv/
+node_modules/
+dist/
+.coverage
+*.egg-info/
+*.tsbuildinfo
+eval/reports/ci*
+# Local tooling, agent files and caches
+.claude/
+.mypy_cache/
+*.sqlite
+uploads/
+.cache/
+*.log

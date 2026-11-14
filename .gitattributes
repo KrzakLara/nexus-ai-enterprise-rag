@@ -1,0 +1,3 @@
+# Frozen evaluation data and reports are stored byte-for-byte: their sha256
+# hashes are recorded in eval/reports/*.json and docs. Never normalize line endings.
+eval/** -text
