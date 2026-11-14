@@ -1,6 +1,6 @@
-# Third-party notices (DRAFT)
+# Third-party notices
 
-> **Status: draft for the repository owner's review. Not legal advice.** It accompanies the proposed MIT license for NEXUS AI's own code (`LICENSE-MIT.draft`). **The MIT license does not supersede any third-party terms**: every component below stays under its own license. Licenses were read from installed package metadata, Debian copyright files in the API image and the model card, on 2026-11-14.
+NEXUS AI's own source code is licensed under the **MIT License** (see [`LICENSE`](LICENSE), Copyright (c) 2026 Lara Krzak). **The MIT License applies only to the project's own code and content. It does not supersede, replace or relicense any third-party component**: each component below stays under its own license, and whoever redistributes it must meet that license's terms. This file records the third-party material in or used by this repository. Licenses were read from installed package metadata, the Debian copyright files in the API Docker image and the model card on 2026-11-14. This is not legal advice.
 
 ## 1. Third-party material committed to this repository
 
