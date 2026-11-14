@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-**Current release:** v0.2.0 (Phases 1–2: MVP and advanced hybrid RAG). **In development on `feat/phase3-document-intelligence`:** Phase 3 document intelligence (layout-aware parsing, OCR, structured extraction, validation, human review, multi-document analysis); see ADR-013. This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
+**Current release:** v0.3.0 release candidate (Phases 1–3: MVP, advanced hybrid RAG, document intelligence: layout-aware parsing, OCR, structured extraction, validation, human review, multi-document analysis; see ADR-013). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
 
 ## Context and goals
 

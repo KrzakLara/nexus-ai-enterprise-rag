@@ -2,7 +2,14 @@
 
 All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). NEXUS AI is a **local demo**. No version is production-ready.
 
-## [Unreleased] - Phase 3 document intelligence (branch `feat/phase3-document-intelligence`)
+## [0.3.0] - release candidate (not yet tagged) - Phase 3 document intelligence
+
+Release notes: [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md).
+
+### Added (release preparation)
+- `LICENSE` (MIT, Copyright (c) 2026 Lara Krzak) for the project's own code, and `THIRD_PARTY_NOTICES.md`. The notices cover the third-party licenses, including the verbatim DejaVu fonts license for the font subsets embedded in the evaluation PDFs. MIT does not relicense third-party components.
+- `docs/ground-truth-review-checklist.md` for a human spot check of 10 representative documents.
+- Versions are 0.3.0 in `pyproject.toml`, `uv.lock`, the FastAPI app, `frontend/package.json` and the UI.
 
 ### Added
 - **Layout-aware parsing** (`backend/app/docintel/`) into one normalized structure: pages, headings, paragraphs, lines, tables (merged cells), and bounding boxes when the parser has them.
