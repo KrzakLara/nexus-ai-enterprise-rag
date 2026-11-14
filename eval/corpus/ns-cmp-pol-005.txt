@@ -1,0 +1,22 @@
+NORTHSTAR DATA RETENTION POLICY
+Policy ID: NS-CMP-POL-005
+Owner: Compliance and Legal
+Valid from: 2026-01-01
+
+1. Purpose
+This policy defines how long Northstar keeps business records and when they must be deleted. Keeping data longer than necessary increases legal and security risk, and deleting it too early can breach legal obligations.
+
+2. Financial records
+Invoices, accounting ledgers and payment records are retained for 11 years from the end of the financial year to which they relate. Tax returns and supporting documents are retained for the same period.
+
+3. Employee records
+Personnel files are retained for 5 years after the end of employment. Payroll records are retained permanently because they are needed to calculate pension entitlements. Job applications from rejected candidates are deleted 6 months after the recruitment process is closed, unless the candidate agreed to a longer period.
+
+4. Customer and contract records
+Signed contracts are retained for 10 years after the contract ends. Customer support tickets are retained for 3 years. Marketing contact data is deleted 2 years after the last interaction if there is no active consent.
+
+5. System and security logs
+Application logs are retained for 90 days. Security audit logs, including access logs for confidential documents, are retained for 2 years.
+
+6. Deletion and legal hold
+Records that reach the end of their retention period are deleted or anonymised within 30 days. If a legal hold is issued by Legal, deletion is suspended for all affected records until the hold is lifted.

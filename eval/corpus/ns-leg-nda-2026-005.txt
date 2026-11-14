@@ -1,0 +1,22 @@
+MUTUAL NON-DISCLOSURE AGREEMENT
+Agreement ID: NS-LEG-NDA-2026-005
+Parties: Northstar Inc. and Helios Analytics Ltd
+Effective date: 2026-03-10
+
+1. Purpose
+The parties intend to evaluate a joint project for predictive maintenance of production equipment. For this purpose they will exchange technical drawings, machine sensor data and pricing information.
+
+2. Confidential information
+Confidential information means all non-public information disclosed by one party to the other, in any form, that is marked as confidential or that a reasonable person would consider confidential. Information that is already public or was independently developed is not confidential information.
+
+3. Obligations
+The receiving party must protect confidential information with at least the same care it uses for its own confidential information, and in any case with reasonable care. Confidential information may only be shared with employees and advisers who need it for the purpose and who are bound by equivalent obligations.
+
+4. Duration
+This agreement remains in force for 2 years from the effective date. The confidentiality obligations survive for 5 years after the agreement ends. Trade secrets remain protected for as long as they qualify as trade secrets.
+
+5. Return of information
+On request, or at the end of the evaluation, the receiving party must return or destroy all confidential information within 30 days and confirm this in writing.
+
+6. Remedies and law
+A breach may cause irreparable harm, and the disclosing party may seek injunctive relief. This agreement is governed by the laws of England and Wales.

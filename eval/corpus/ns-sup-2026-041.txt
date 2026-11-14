@@ -1,0 +1,23 @@
+ATLAS INDUSTRIAL SUPPLY AGREEMENT
+Agreement ID: NS-SUP-2026-041
+Parties: Northstar Inc. (Buyer) and Atlas Industrial Components GmbH (Supplier)
+Effective date: 2026-01-15
+Initial term ends: 2027-03-31
+
+1. Scope of supply
+Atlas Industrial Components supplies precision steel fasteners, hydraulic seals and replacement bearings for the Northstar assembly lines in Zagreb and Graz. Orders are placed through the Northstar procurement portal and confirmed by the Supplier within two business days.
+
+2. Commercial terms
+The estimated annual contract value is EUR 184,000. Prices are fixed for the first twelve months. After that, prices may be adjusted once per year by the change in the Eurostat producer price index, capped at 4 percent per year. Invoices are payable within 45 days of receipt of a correct invoice.
+
+3. Delivery and service levels
+Standard delivery time is 10 business days from order confirmation. Urgent orders marked as line-stop critical must be delivered within 48 hours. If the Supplier misses a confirmed delivery date, Northstar may claim a late delivery penalty of 0.5 percent of the order value per day of delay, up to a maximum of 10 percent of the order value.
+
+4. Term, renewal and termination
+The agreement renews automatically for successive one-year periods unless either party gives written notice of non-renewal at least 90 days before the end of the current term. Either party may terminate for material breach if the breach is not cured within 30 days of written notice.
+
+5. Liability and insurance
+Each party's total liability under this agreement is limited to 150 percent of the annual contract value, except for damage caused by gross negligence or wilful misconduct. The Supplier must maintain product liability insurance of at least EUR 2,000,000 per claim.
+
+6. Governing law
+This agreement is governed by Austrian law. Disputes are resolved by the commercial court in Vienna.

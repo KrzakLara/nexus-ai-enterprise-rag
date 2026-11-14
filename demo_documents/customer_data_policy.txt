@@ -1,0 +1,10 @@
+NORTHSTAR CUSTOMER DATA AND CONTRACT COMPLIANCE POLICY
+Document ID: NS-LEGAL-2026-022
+Classification: Internal - Legal and Sales
+
+Customer personal data is processed only for documented business purposes.
+Access requests must be logged. Customer data exported to an external provider
+requires authorization from the Data Protection Officer.
+
+Data processing agreements must document retention periods, deletion procedures,
+and breach notification obligations. Material exceptions require Legal review.

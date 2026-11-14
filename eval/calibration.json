@@ -1,0 +1,61 @@
+{
+  "selected_on": "dev split only",
+  "family": "sentence",
+  "policy": {
+    "enabled": true,
+    "min_semantic_similarity": null,
+    "require_identifier_match": true,
+    "accept_on_branch_agreement": false,
+    "agreement_depth": 3,
+    "min_sentence_similarity": 0.835,
+    "min_term_coverage": null
+  },
+  "extraction": {
+    "max_sources": 3,
+    "sentences_per_source": 2,
+    "min_sentence_chars": 12,
+    "w_semantic": 1.0,
+    "w_lexical": 0.5,
+    "w_exact": 0.0
+  },
+  "dev": {
+    "n_answerable": 41,
+    "n_unanswerable": 9,
+    "confusion": {
+      "answered_answerable": 35,
+      "abstained_answerable": 6,
+      "answered_unanswerable": 1,
+      "abstained_unanswerable": 8
+    },
+    "answerability_precision": 0.9722,
+    "answerable_recall": 0.8537,
+    "unanswerable_detection": 0.8889,
+    "false_abstention_rate": 0.1463,
+    "false_answerability_rate": 0.1111,
+    "balanced_accuracy": 0.8713,
+    "answered_with_relevant_in_top5": 0.8293,
+    "harmful_false_abstentions": 3,
+    "abstentions_after_retrieval_miss": 3
+  },
+  "test": {
+    "n_answerable": 41,
+    "n_unanswerable": 9,
+    "confusion": {
+      "answered_answerable": 33,
+      "abstained_answerable": 8,
+      "answered_unanswerable": 0,
+      "abstained_unanswerable": 9
+    },
+    "answerability_precision": 1.0,
+    "answerable_recall": 0.8049,
+    "unanswerable_detection": 1.0,
+    "false_abstention_rate": 0.1951,
+    "false_answerability_rate": 0.0,
+    "balanced_accuracy": 0.9024,
+    "answered_with_relevant_in_top5": 0.7317,
+    "harmful_false_abstentions": 4,
+    "abstentions_after_retrieval_miss": 4
+  },
+  "dataset_sha256": "1a3c160c9645e075db295566e33139ad0f352c89dc1bb01343f9dcd257a1135f",
+  "generated_at": "2026-11-12T15:54:43+00:00"
+}

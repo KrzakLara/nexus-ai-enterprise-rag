@@ -1,0 +1,22 @@
+POSTUPAK U SLUČAJU POVREDE OSOBNIH PODATAKA
+Oznaka: NS-CMP-SOP-009
+Vlasnik: Usklađenost i zaštita podataka
+Primjenjuje se od: 2026-03-15
+
+1. Svrha
+Ovaj postupak opisuje kako zaposlenici Northstara prijavljuju i rješavaju povrede osobnih podataka, primjerice gubitak prijenosnog računala, slanje e-pošte pogrešnom primatelju ili neovlašteni pristup sustavu.
+
+2. Prijava incidenta
+Svaki zaposlenik koji primijeti moguću povredu osobnih podataka mora je prijaviti službeniku za zaštitu podataka odmah, a najkasnije u roku od 4 sata od saznanja. Prijava se podnosi putem obrasca na intranetu ili na adresu zastita.podataka@northstar.example.
+
+3. Procjena rizika
+Službenik za zaštitu podataka u roku od 24 sata procjenjuje vrstu podataka, broj pogođenih osoba i vjerojatnost štete. U procjenu se uključuju informatička sigurnost i pravna služba.
+
+4. Obavještavanje nadzornog tijela
+Ako povreda vjerojatno predstavlja rizik za prava pojedinaca, Northstar obavještava Agenciju za zaštitu osobnih podataka najkasnije 72 sata nakon saznanja za povredu. Ako je rizik visok, pogođene osobe obavještavaju se bez nepotrebnog odgađanja.
+
+5. Evidencija povreda
+Sve povrede, uključujući one koje nisu prijavljene nadzornom tijelu, upisuju se u registar povreda. Registar se čuva 5 godina.
+
+6. Vježbe
+Najmanje jednom godišnje provodi se simulacija povrede podataka s timom za informatičku sigurnost. Rezultati vježbe dostavljaju se Upravi.

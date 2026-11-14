@@ -1,0 +1,22 @@
+UGOVOR O RAZINI USLUGE TEHNIČKE PODRŠKE
+Broj ugovora: NS-IT-2025-033
+Ugovorne strane: Northstar d.o.o. (Korisnik) i Delta Servis d.o.o. (Pružatelj)
+Razdoblje: od 2025-09-01 do 2027-08-31
+
+1. Opseg usluge
+Pružatelj osigurava korisničku podršku za prijenosna računala, mobilne uređaje i uredske pisače u svim uredima Northstara u Hrvatskoj. Podrška se pruža na hrvatskom i engleskom jeziku putem telefona, e-pošte i portala za prijavu kvarova.
+
+2. Radno vrijeme podrške
+Standardna podrška dostupna je radnim danom od 07:00 do 19:00. Za kritične kvarove dežurna služba dostupna je 24 sata dnevno, svih sedam dana u tjednu.
+
+3. Vrijeme odziva
+Za kritične kvarove (prioritet P1) Pružatelj mora odgovoriti u roku od 30 minuta i otkloniti kvar u roku od 4 sata. Za kvarove prioriteta P2 vrijeme odziva iznosi 2 sata, a za zahtjeve prioriteta P3 sljedeći radni dan.
+
+4. Mjerenje kvalitete
+Pružatelj mora riješiti najmanje 85 posto prijava pri prvom kontaktu. Zadovoljstvo korisnika mjeri se anketom nakon svake zatvorene prijave i mora iznositi najmanje 4,2 od 5.
+
+5. Ugovorne kazne
+Ako Pružatelj u jednom mjesecu ne ispuni vrijeme odziva za više od 5 posto prijava, Korisnik umanjuje mjesečnu naknadu za 8 posto.
+
+6. Naknada
+Mjesečna naknada iznosi 3.400 EUR bez PDV-a. Ugovor se može otkazati uz otkazni rok od 90 dana.

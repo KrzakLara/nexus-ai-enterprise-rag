@@ -1,0 +1,10 @@
+[
+  {"user":"finance@northstar.demo","query":"What is the expiration date and notice period of the Atlas supply agreement?","expected":"atlas_supplier_agreement"},
+  {"user":"finance@northstar.demo","query":"What is the 99.9% availability agreement?","expected":"cygnus_cloud_agreement"},
+  {"user":"hr@northstar.demo","query":"What is the February annual salary review policy?","expected":"employee_compensation_policy"},
+  {"user":"sales@northstar.demo","query":"How many stages are in enterprise sales cycle?","expected":"enterprise_sales_playbook"},
+  {"user":"sales@northstar.demo","query":"What are retention and breach notification obligations for customers?","expected":"customer_data_policy"},
+  {"user":"finance@otherco.demo","query":"What is the SILVER-IBIS-73 capex forecast?","expected":"otherco_confidential_budget"},
+  {"user":"hr@northstar.demo","query":"What is the annual value of the Atlas agreement?","expected":null,"forbidden":"184,000"},
+  {"user":"finance@northstar.demo","query":"What is the unique Otherco SILVER-IBIS-73 secret?","expected":null,"forbidden":"SILVER-IBIS-73"}
+]

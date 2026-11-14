@@ -1,0 +1,19 @@
+OTHERCO PURCHASING POLICY
+Policy ID: OC-PRC-POL-001
+Owner: Otherco Finance
+Valid from: 2026-01-01
+
+1. Purpose
+This policy sets the rules for purchasing goods and services at Otherco.
+
+2. Competitive quotes
+Purchases with an expected value below EUR 15,000 may be awarded after one written quote. For purchases between EUR 15,000 and EUR 75,000 the buyer must obtain at least two written quotes. Purchases above EUR 75,000 require approval by the managing director.
+
+3. Approval of invoices
+Invoices up to EUR 10,000 are approved by the budget owner. Invoices above EUR 10,000 require approval by the finance manager.
+
+4. Supplier onboarding
+New suppliers must provide company registration documents and bank details confirmed on company letterhead.
+
+5. Conflicts of interest
+Employees must declare any personal relationship with a supplier to the finance manager.

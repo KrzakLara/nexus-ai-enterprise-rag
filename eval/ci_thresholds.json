@@ -1,0 +1,19 @@
+{
+  "_justification": "Regression floors for `python scripts/evaluate.py --ci` (held-out test split: 41 answerable cases, 39 of them with expected facts, 9 unanswerable). Each floor = value measured on 2026-11-12 (Phase 2d, fresh `--ci` run) minus about two test questions (1/41 = 0.024 retrieval, 1/39 = 0.026 facts, 1/9 = 0.111 abstention). The margin absorbs cross-platform floating-point differences in CPU embeddings (Windows dev machine vs Linux CI) that can swap near-tied ranks or flip a sentence across the evidence threshold; it does not hide real regressions such as a broken branch, an ACL change or a reverted extractor (the Phase 2c first-330-characters extractor scored 0.308 on the same metric and would fail). Latency is deliberately NOT gated (machine-dependent). Security and citation gates are zero-tolerance and live in scripts/evaluate.py; every key below is mandatory (a missing key fails the gate).",
+  "_answer_fact_recall_definition": "End-to-end /api/ask, mode=hybrid, top_k=5, the app's configured evidence policy, offline extractive generator: share of answerable test questions with expected facts whose answer text contains ALL expected facts. Abstentions count as misses, so this gate covers both extraction quality and false abstentions.",
+  "measured_test_split": {
+    "bm25": {"ndcg@5": 0.7008, "recall@5": 0.7602},
+    "lexical": {"ndcg@5": 0.7378, "recall@5": 0.7967},
+    "semantic": {"ndcg@5": 0.7370, "recall@5": 0.8496},
+    "hybrid": {"ndcg@5": 0.7339, "recall@5": 0.8089},
+    "hybrid_unanswerable_detection": 1.0,
+    "hybrid_answer_fact_recall": 0.5385
+  },
+  "retrieval_min": {
+    "lexical": {"ndcg@5": 0.68, "recall@5": 0.74},
+    "semantic": {"ndcg@5": 0.68, "recall@5": 0.79},
+    "hybrid": {"ndcg@5": 0.68, "recall@5": 0.75}
+  },
+  "hybrid_min_unanswerable_abstention": 0.77,
+  "hybrid_min_answer_fact_recall": 0.48
+}

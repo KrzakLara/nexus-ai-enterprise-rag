@@ -1,0 +1,22 @@
+CYGNUS BACKUP SERVICES ADDENDUM
+Addendum ID: NS-IT-2026-018
+Related agreement: NS-IT-2026-017 (Cygnus Cloud Platform Service Level Agreement)
+Effective date: 2026-05-15
+
+1. Purpose
+This addendum adds managed backup services for the Northstar ERP database, file shares and the document management platform. It does not change the availability commitment of the main service level agreement.
+
+2. Backup schedule
+Incremental backups are taken every 4 hours. A full backup is taken every Sunday at 02:00 Central European Time. Backups are encrypted with AES-256 and stored in a separate Cygnus region from the production data.
+
+3. Retention
+Daily backups are retained for 35 days. Weekly full backups are retained for 12 months. Monthly archive copies are retained for 7 years to support financial record keeping obligations.
+
+4. Restore requests
+Restore requests are raised through the Cygnus service portal. Single-file restores must be completed within 4 business hours. A full database restore must be completed within 8 hours of the request.
+
+5. Testing
+The Provider performs a documented restore test every quarter. Northstar IT may request one additional restore test per year at no extra cost.
+
+6. Fees
+The backup service costs EUR 1,150 per month. Storage above 20 terabytes is charged at EUR 18 per additional terabyte per month.

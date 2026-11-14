@@ -1,0 +1,23 @@
+CYGNUS CLOUD PLATFORM SERVICE LEVEL AGREEMENT
+Agreement ID: NS-IT-2026-017
+Parties: Northstar Inc. (Customer) and Cygnus Cloud Services Ltd (Provider)
+Service start: 2026-04-01
+Term ends: 2027-04-30
+
+1. Covered services
+The Provider hosts the Northstar ERP system, the document management platform and the internal data warehouse in its Frankfurt region, with a secondary region in Amsterdam for disaster recovery.
+
+2. Availability commitment
+The Provider commits to a monthly availability of 99.9 percent for production services, measured at the load balancer and excluding announced maintenance windows. Maintenance windows are limited to four hours per month and must be announced at least 5 business days in advance.
+
+3. Service credits
+If monthly availability falls below 99.9 percent, the Customer receives a service credit of 10 percent of the monthly fee. If availability falls below 99.0 percent, the credit increases to 25 percent of the monthly fee. Service credits are the Customer's sole financial remedy for availability shortfalls.
+
+4. Support and incident response
+Critical incidents (severity 1) must receive a first response within 15 minutes, at any time of day. High severity incidents must receive a first response within 2 hours during business hours.
+
+5. Disaster recovery
+The recovery time objective (RTO) for production services is 4 hours and the recovery point objective (RPO) is 15 minutes. Disaster recovery tests are performed twice per year and the results are shared with the Customer.
+
+6. Fees and notice
+The monthly service fee is EUR 6,000, which corresponds to an annual value of EUR 72,000. Either party may terminate the agreement with 60 days written notice before the end of the term.

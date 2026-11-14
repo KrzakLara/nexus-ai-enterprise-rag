@@ -1,0 +1,25 @@
+CONSULTING SERVICES AGREEMENT
+Agreement ID: NS-LEG-2026-019
+Parties: Northstar Inc. (Client) and Helix Consulting GmbH (Consultant)
+Effective date: 2026-06-01
+End date: 2027-05-31
+
+Note: Helix Consulting GmbH is a different company from Helios Analytics Ltd, with whom Northstar has a separate non-disclosure agreement.
+
+1. Services
+The Consultant supports the Northstar finance transformation programme, including the redesign of the month-end closing process and the selection of a new consolidation tool.
+
+2. Fees
+Services are charged on a time and materials basis at a daily rate of EUR 1,250 per consultant. The total fees under this agreement must not exceed EUR 240,000 without a written change request approved by the CFO. Travel expenses are reimbursed at cost, up to 8 percent of the fees.
+
+3. Deliverables
+The Consultant delivers a target process design by 2026-09-30 and a tool selection report by 2026-12-15. Each deliverable is accepted in writing by the Northstar programme manager within 10 business days.
+
+4. Personnel
+The Consultant assigns a lead consultant and up to three additional consultants. Replacing the lead consultant requires Northstar's prior written consent.
+
+5. Termination
+Northstar may terminate this agreement for convenience with 30 days written notice. In that case only services performed until the termination date are paid.
+
+6. Intellectual property and law
+All deliverables become the property of Northstar after payment. The agreement is governed by German law.

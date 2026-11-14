@@ -1,0 +1,22 @@
+ACCESS CONTROL AND PASSWORD POLICY
+Policy ID: NS-IT-POL-010
+Owner: IT Security
+Valid from: 2026-02-01
+
+1. Accounts
+Every user receives a personal account. Shared accounts are not allowed, except for documented technical service accounts that are owned by a named IT administrator.
+
+2. Passwords
+Passwords must be at least 14 characters long. Passwords do not expire on a fixed schedule but must be changed immediately if a compromise is suspected. The last 10 passwords cannot be reused. Password managers approved by IT Security may be used.
+
+3. Multi-factor authentication
+Multi-factor authentication is mandatory for remote access, email, the ERP system and all administrator accounts. Hardware security keys are required for domain administrators.
+
+4. Account lockout
+An account is locked for 15 minutes after 5 failed login attempts. Repeated lockouts are reviewed by the security operations team.
+
+5. Access reviews
+Managers review the access rights of their team members every 6 months. Access to systems containing confidential HR or financial data is reviewed every 3 months. Accounts of employees who leave the company are disabled on their last working day.
+
+6. Privileged access
+Administrator rights are granted only for the time needed to complete a task, with a maximum of 8 hours per request. All privileged sessions are recorded.
