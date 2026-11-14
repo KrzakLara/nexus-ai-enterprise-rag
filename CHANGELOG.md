@@ -63,11 +63,17 @@ All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://k
   - stores structure and extraction for every demo document.
 - CORS allows `PATCH` (review corrections).
 
+### Fixed (dataset v1.1, `eval/docintel/ERRATA.md`)
+- **Label erratum A:** 8 numbers in exponent notation (`4E+1`) are now canonical decimals (`40`). The review API now reads scientific notation as a number; before, it would have parsed `4E+1` as `4`.
+- **Label erratum B:** one canonical `governing_law` (*Croatia*) instead of *Republic of Croatia* and *Croatia*. The rule lives in `rules.py`, and comparisons no longer show equivalent jurisdictions as different.
+- **Label erratum C:** new field `value_period` (annual / total / monthly). `contract_value` had mixed annual, total and monthly amounts; di-c13 states a **monthly** rent. Comparisons no longer rank amounts with different periods.
+- **Impact:** source documents are unchanged (verified by SHA-256). The v1.0 labels and report are archived. Field F1 changed 0.9856 → 0.9848 and test F1 0.973 → 0.971; the CI floors are unchanged.
+
 ### Verified (2026-11-14)
-- **Tests, Linux container** (API image + dev extras, Tesseract 5.5.0, PostgreSQL 16 + pgvector): `pytest` **350 passed, 0 skipped**, 94 % line coverage of `backend/app`.
+- **Tests, Linux container** (API image + dev extras, Tesseract 5.5.0, PostgreSQL 16 + pgvector): `pytest` **359 passed, 0 skipped** (after the v1.1 errata), 94 % line coverage of `backend/app`.
 - **Tests, Windows** (no Tesseract): 348 passed, 2 skipped (the two OCR tests).
 - **Phase 2 gates:** `scripts/evaluate.py --ci` passes with test-split metrics identical to the stored report and 0 authorization violations, so retrieval did not regress.
-- **Phase 3 gates:** `scripts/evaluate_docintel.py --ci` passes. The full run gives field F1 0.986 (test 0.973), evidence support 100 %, OCR CER 0.0015 and **0 violations in 1,946 security checks** (see `docs/extraction-evaluation-results.md`).
+- **Phase 3 gates:** `scripts/evaluate_docintel.py --ci` passes. The full run gives field F1 0.985 (test 0.971, dataset v1.1), evidence support 100 %, OCR CER 0.0015 and **0 violations in 1,946 security checks** (see `docs/extraction-evaluation-results.md`).
 - **Docker:**
   - `scripts/demo_scenarios.py` on the Phase 3 stack: 9 PASS, 1 KNOWN (unchanged from v0.2.0);
   - `scripts/docker_smoke.py` on a disposable instance: **27/27**.

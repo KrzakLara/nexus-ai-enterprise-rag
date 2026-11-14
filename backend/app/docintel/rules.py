@@ -143,7 +143,7 @@ def _label_hits(text: str, labels: list[tuple[str, str]]):
             if not value and k + 1 < len(segments):
                 value, sep = segments[k + 1], True
             if value:
-                yield field, value, sep
+                yield field, value, sep, label
             break
 
 
@@ -197,7 +197,7 @@ def extract(doc: ParsedDocument, document_id: str, doc_type: str) -> list[Extrac
     for ln in lines:
         if ln.table_id is not None and (ln.table_id, ln.row) in line_item_rows:
             continue  # line-item rows are handled by the table rules
-        for field, value_text, sep in _label_hits(ln.text, labels):
+        for field, value_text, sep, label in _label_hits(ln.text, labels):
             kind = VALUE_TYPES[field]
             parsed = _parse_value(kind, value_text, strict=not sep)
             if parsed is None:
@@ -221,6 +221,11 @@ def extract(doc: ParsedDocument, document_id: str, doc_type: str) -> list[Extrac
                 continue
             found[field] = ExtractedField(name=field, value_type=vtype, value=value, raw=raw,
                                           evidence=ev, method=method)
+            if field == "contract_value" and label in VALUE_PERIOD_OF_LABEL:
+                # what the amount MEANS comes from its label: annual / total / monthly
+                found["value_period"] = ExtractedField(name="value_period", value_type="text",
+                                                       value=VALUE_PERIOD_OF_LABEL[label], raw=label, evidence=ev,
+                                                       method=f"{PROVIDER}:value_label")
             if field in ("total_amount", "contract_value", "subtotal") and "currency" not in found:
                 cur = nz.find_currency(ln.text)
                 if cur:
@@ -312,7 +317,18 @@ def _document_currency(lines: list[_Line], document_id: str) -> list[ExtractedFi
 # ---------------------------------------------------------------------------- contract sentences
 
 # Croatian legal phrasing names the jurisdiction in the genitive; the canonical value is English.
-JURISDICTION_CANONICAL = {"hrvatske": "Croatia", "republike hrvatske": "Croatia"}
+# Canonical governing_law = the short English name of the jurisdiction. Equivalent wordings map to
+# it; the original wording stays in `raw` and in the evidence. Without this, 'Republic of Croatia'
+# (EN contracts) and 'Republike Hrvatske' (HR contracts) looked like different jurisdictions.
+JURISDICTION_CANONICAL = {"hrvatske": "Croatia", "republike hrvatske": "Croatia",
+                          "republic of croatia": "Croatia", "croatia": "Croatia"}
+# contract_value has no meaning without its period, which the printed label states.
+VALUE_PERIOD_OF_LABEL = {
+    "annual value": "annual", "annual fee": "annual", "godišnja vrijednost": "annual", "godišnja naknada": "annual",
+    "contract value": "total", "total contract value": "total", "total value": "total",
+    "vrijednost ugovora": "total", "ukupna vrijednost": "total",
+}
+VALUE_PERIODS = ("annual", "total", "monthly")
 RENEWAL_POSITIVE = re.compile(r"automatically renew|renews automatically|shall be renewed automatically|"
                               r"auto-renew|automatically extended|automatski (se )?(produžuje|obnavlja|"
                               r"produljuje)|prešutno (se )?produžuje", re.I)

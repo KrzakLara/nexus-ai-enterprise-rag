@@ -41,18 +41,20 @@ The evaluation and the tests were written *before* trusting the pipeline. Each i
 6. **Correct derived values were flagged as unsupported.** This affected contract categories and the Croatian jurisdiction phrase ("Republike Hrvatske" → Croatia). Valid documents therefore needed approval *overrides* (7 in the first run). These values are now grounded against the same keyword and alias tables the extractor uses, and the override count dropped to 0.
 7. **Extraction-time errors survived reviewer corrections** and blocked approval. Such issues now apply only to uncorrected values.
 
-## Results (offline rules provider, 32 frozen documents; `eval/docintel/reports/latest.json`, 2026-11-14)
+## Results (offline rules provider, 32 frozen documents, dataset v1.1; `eval/docintel/reports/latest.json`, 2026-11-14)
+
+Dataset v1.1 corrected three label issues found in a spot check (exponent-notation numbers, two names for one jurisdiction, and the missing `value_period` semantics of `contract_value`); see `eval/docintel/ERRATA.md`. Effect: +16 field slots; F1 0.9856 → 0.9848, test 0.973 → 0.971; everything else unchanged (`eval/docintel/reports/archive/ERRATA-impact.md`).
 
 | Area | Result |
 |---|---|
-| Field extraction | F1 **0.986** overall (exact match 0.975, 360 field slots); dev 0.995, **test 0.973**; Croatian 0.968, English 0.996 |
+| Field extraction | F1 **0.985** overall (exact match 0.973, 376 field slots); dev 0.995, **test 0.971**; Croatian 0.966, English 0.996 |
 | Missing fields | 9/9 absent fields left empty, **0 invented values**; 0 fields extracted from non-contract / non-invoice documents |
 | Classification | 32/32 (contract / invoice / unknown) |
-| Evidence | 519 values: 100 % valid references, 100 % supported by the cited text, 99.6 % on the ground-truth page |
+| Evidence | 533 values: 100 % valid references, 100 % supported by the cited text, 99.6 % on the ground-truth page |
 | Tables | line-item cells 135/135, rows 27/27 (1 extra row predicted, on a test invoice with an unknown total label) |
 | Validation | numeric reconciliation 13/14 invoices; invalid-field detection precision 0.80, recall 1.00 |
 | OCR (10 scanned pages, Tesseract 5.5.0) | mean CER **0.0015**, WER 0.0064, key-token recall 0.992 |
-| Review (simulated through the API) | correction rate 2.4 %; approval consistency 100 %; 4/4 invalid documents blocked from approval; false-accept rate 0; stale edits refused |
+| Review (simulated through the API) | correction rate 2.5 %; approval consistency 100 %; 4/4 invalid documents blocked from approval; false-accept rate 0; stale edits refused |
 | Multi-document questions | 6/6 exact after review (5/6 before: one false positive caused by the unknown-label invoice) |
 | Security matrix | 1,946 requests across 7 personas × 32 documents × all endpoints: **0** unauthorized reads, 0 cross-tenant leaks, 0 unauthorized review actions, 0 unauthorized comparisons |
 

@@ -13,13 +13,16 @@ Approved and rejected extractions are final; re-processing them requires an expl
 """
 from __future__ import annotations
 
+import re
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Document, Extraction, ExtractionField, ReviewEvent, User
 from ..security import authorized_documents
 from . import grounding
-from .rules import _parse_value
+from .rules import VALUE_PERIODS, _parse_value
 from .schemas import Evidence, ExtractedField, check_canonical, value_type_of
 from .service import ExtractionLocked, effective, load_parsed, now, record, revalidate
 
@@ -63,6 +66,9 @@ def normalize_correction(value_type: str, value: str | None) -> str | None:
         return value
     except ValueError:
         pass
+    if value_type in ("money", "decimal", "percent") and re.fullmatch(r"-?\d+(\.\d+)?[eE][+-]?\d+", value):
+        # scientific notation ('4E+1') is a number, not text: the money parser would read '4'
+        return format(Decimal(value).normalize(), "f")
     kind = {"decimal": "money", "percent": "money"}.get(value_type, value_type)
     parsed = _parse_value(kind, value, strict=False)
     if parsed is None:
@@ -87,6 +93,8 @@ def correct(db: Session, user: User, extraction: Extraction, corrections: list[d
         except KeyError as exc:
             raise ReviewError(422, str(exc).strip("'\"")) from None
         new_value = normalize_correction(vtype, c.get("value"))
+        if name == "value_period" and new_value is not None and new_value not in VALUE_PERIODS:
+            raise ReviewError(422, "value_period must be one of: " + ", ".join(VALUE_PERIODS))
         evidence = None
         if c.get("evidence_quote"):
             located = grounding.locate_quote(parsed, c.get("page"), c["evidence_quote"]) if parsed else None

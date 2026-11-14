@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-11-14T20:04:20Z",
+    "generated_at": "2026-11-14T21:19:16Z",
     "documents": 32,
     "splits": {
       "dev": 18,
@@ -44,139 +44,139 @@
       "python-docx (one logical page; DOCX has no fixed pagination)"
     ],
     "provider": "rules_v1 (offline, deterministic)",
-    "corpus_sha256": "5ada74e1fbf883e5",
+    "corpus_sha256": "aa0a85216914635b",
     "platform": "Linux 6.18.58.1-microsoft-standard-WSL2, Python 3.12.16",
-    "total_seconds": 49.4,
+    "total_seconds": 60.7,
     "mode": "full"
   },
   "uploads": {
     "di-c01": {
       "status": 201,
-      "ms": 197
+      "ms": 273
     },
     "di-c02": {
       "status": 201,
-      "ms": 51
+      "ms": 61
     },
     "di-c03": {
       "status": 201,
-      "ms": 52
+      "ms": 65
     },
     "di-c04": {
       "status": 201,
-      "ms": 23
+      "ms": 32
     },
     "di-c05": {
       "status": 201,
-      "ms": 23
+      "ms": 29
     },
     "di-c06": {
       "status": 201,
-      "ms": 5024
+      "ms": 7546
     },
     "di-c07": {
       "status": 201,
-      "ms": 2702
+      "ms": 3643
     },
     "di-c08": {
       "status": 201,
-      "ms": 2473
+      "ms": 2914
     },
     "di-c09": {
       "status": 201,
-      "ms": 44
+      "ms": 57
     },
     "di-c10": {
       "status": 201,
-      "ms": 44
+      "ms": 59
     },
     "di-c11": {
       "status": 201,
-      "ms": 46
+      "ms": 59
     },
     "di-c12": {
       "status": 201,
-      "ms": 5474
+      "ms": 6619
     },
     "di-c13": {
       "status": 201,
-      "ms": 26
+      "ms": 32
     },
     "di-c14": {
       "status": 201,
-      "ms": 27
+      "ms": 33
     },
     "di-c15": {
       "status": 201,
-      "ms": 119
+      "ms": 143
     },
     "di-c16": {
       "status": 201,
-      "ms": 2870
+      "ms": 3587
     },
     "di-i01": {
       "status": 201,
-      "ms": 69
+      "ms": 79
     },
     "di-i02": {
       "status": 201,
-      "ms": 66
+      "ms": 80
     },
     "di-i03": {
       "status": 201,
-      "ms": 107
+      "ms": 132
     },
     "di-i04": {
       "status": 201,
-      "ms": 40
+      "ms": 51
     },
     "di-i05": {
       "status": 201,
-      "ms": 53
+      "ms": 76
     },
     "di-i06": {
       "status": 201,
-      "ms": 3074
+      "ms": 3395
     },
     "di-i07": {
       "status": 201,
-      "ms": 2810
+      "ms": 2917
     },
     "di-i08": {
       "status": 201,
-      "ms": 31
+      "ms": 34
     },
     "di-i09": {
       "status": 201,
-      "ms": 68
+      "ms": 77
     },
     "di-i10": {
       "status": 201,
-      "ms": 40
+      "ms": 44
     },
     "di-i11": {
       "status": 201,
-      "ms": 31
+      "ms": 35
     },
     "di-i12": {
       "status": 201,
-      "ms": 2518
+      "ms": 2931
     },
     "di-i13": {
       "status": 201,
-      "ms": 51
+      "ms": 74
     },
     "di-i14": {
       "status": 201,
-      "ms": 59
+      "ms": 89
     },
     "di-o01": {
       "status": 201,
-      "ms": 37
+      "ms": 51
     },
     "di-o02": {
       "status": 201,
-      "ms": 22
+      "ms": 31
     }
   },
   "classification": {
@@ -197,74 +197,74 @@
     "definition": "field slots = scalar fields + ground-truth parties (+ extra predicted parties); a wrong value counts as FP and FN",
     "groups": {
       "all": {
-        "tp": 342,
+        "tp": 356,
         "fp": 1,
-        "fn": 9,
-        "precision": 0.9971,
-        "recall": 0.9744,
-        "f1": 0.9856,
-        "slots": 360,
-        "exact_match": 0.975
+        "fn": 10,
+        "precision": 0.9972,
+        "recall": 0.9727,
+        "f1": 0.9848,
+        "slots": 376,
+        "exact_match": 0.9734
       },
       "format:docx": {
-        "tp": 47,
+        "tp": 49,
         "fp": 0,
         "fn": 1,
         "precision": 1.0,
-        "recall": 0.9792,
-        "f1": 0.9895,
-        "slots": 48,
-        "exact_match": 0.9792
+        "recall": 0.98,
+        "f1": 0.9899,
+        "slots": 50,
+        "exact_match": 0.98
       },
       "format:md": {
-        "tp": 33,
+        "tp": 35,
         "fp": 0,
         "fn": 2,
         "precision": 1.0,
-        "recall": 0.9429,
-        "f1": 0.9706,
-        "slots": 36,
-        "exact_match": 0.9444
+        "recall": 0.9459,
+        "f1": 0.9722,
+        "slots": 38,
+        "exact_match": 0.9474
       },
       "format:mixed": {
-        "tp": 12,
+        "tp": 13,
         "fp": 0,
         "fn": 0,
         "precision": 1.0,
         "recall": 1.0,
         "f1": 1.0,
-        "slots": 12,
+        "slots": 13,
         "exact_match": 1.0
       },
       "format:pdf": {
-        "tp": 107,
+        "tp": 112,
         "fp": 0,
         "fn": 0,
         "precision": 1.0,
         "recall": 1.0,
         "f1": 1.0,
-        "slots": 108,
+        "slots": 113,
         "exact_match": 1.0
       },
       "format:scan": {
-        "tp": 82,
+        "tp": 86,
         "fp": 1,
         "fn": 2,
-        "precision": 0.988,
-        "recall": 0.9762,
-        "f1": 0.982,
-        "slots": 84,
-        "exact_match": 0.9762
+        "precision": 0.9885,
+        "recall": 0.9773,
+        "f1": 0.9829,
+        "slots": 88,
+        "exact_match": 0.9773
       },
       "format:txt": {
         "tp": 25,
         "fp": 0,
-        "fn": 4,
+        "fn": 5,
         "precision": 1.0,
-        "recall": 0.8621,
-        "f1": 0.9259,
-        "slots": 36,
-        "exact_match": 0.8889
+        "recall": 0.8333,
+        "f1": 0.9091,
+        "slots": 38,
+        "exact_match": 0.8684
       },
       "format:xlsx": {
         "tp": 36,
@@ -277,54 +277,54 @@
         "exact_match": 1.0
       },
       "language:en": {
-        "tp": 220,
+        "tp": 229,
         "fp": 0,
         "fn": 2,
         "precision": 1.0,
-        "recall": 0.991,
-        "f1": 0.9955,
-        "slots": 228,
-        "exact_match": 0.9912
+        "recall": 0.9913,
+        "f1": 0.9957,
+        "slots": 238,
+        "exact_match": 0.9916
       },
       "language:hr": {
-        "tp": 122,
+        "tp": 127,
         "fp": 1,
-        "fn": 7,
-        "precision": 0.9919,
-        "recall": 0.9457,
-        "f1": 0.9683,
-        "slots": 132,
-        "exact_match": 0.947
+        "fn": 8,
+        "precision": 0.9922,
+        "recall": 0.9407,
+        "f1": 0.9658,
+        "slots": 138,
+        "exact_match": 0.942
       },
       "split:dev": {
-        "tp": 198,
+        "tp": 206,
         "fp": 1,
         "fn": 1,
-        "precision": 0.995,
-        "recall": 0.995,
-        "f1": 0.995,
-        "slots": 204,
-        "exact_match": 0.9951
+        "precision": 0.9952,
+        "recall": 0.9952,
+        "f1": 0.9952,
+        "slots": 213,
+        "exact_match": 0.9953
       },
       "split:test": {
-        "tp": 144,
+        "tp": 150,
+        "fp": 0,
+        "fn": 9,
+        "precision": 1.0,
+        "recall": 0.9434,
+        "f1": 0.9709,
+        "slots": 163,
+        "exact_match": 0.9448
+      },
+      "type:contract": {
+        "tp": 191,
         "fp": 0,
         "fn": 8,
         "precision": 1.0,
-        "recall": 0.9474,
-        "f1": 0.973,
-        "slots": 156,
-        "exact_match": 0.9487
-      },
-      "type:contract": {
-        "tp": 177,
-        "fp": 0,
-        "fn": 7,
-        "precision": 1.0,
-        "recall": 0.962,
-        "f1": 0.9806,
-        "slots": 192,
-        "exact_match": 0.9635
+        "recall": 0.9598,
+        "f1": 0.9795,
+        "slots": 208,
+        "exact_match": 0.9615
       },
       "type:invoice": {
         "tp": 165,
@@ -439,6 +439,16 @@
         "exact_match": 0.9062
       },
       "contract.payment_terms": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9333,
+        "f1": 0.9655,
+        "slots": 16,
+        "exact_match": 0.9375
+      },
+      "contract.value_period": {
         "tp": 14,
         "fp": 0,
         "fn": 1,
@@ -570,20 +580,20 @@
       }
     },
     "missing_fields": {
-      "ground_truth_missing": 9,
-      "correctly_left_empty": 9,
+      "ground_truth_missing": 10,
+      "correctly_left_empty": 10,
       "hallucinated": 0,
       "detection_rate": 1.0
     },
     "fields_extracted_from_unknown_documents": 0
   },
   "evidence": {
-    "fields_with_value": 519,
+    "fields_with_value": 533,
     "evidence_reference_valid_rate": 1.0,
     "evidence_support_rate": 1.0,
     "unsupported_field_rate": 0.0,
-    "page_attribution_accuracy": 0.9961,
-    "page_attribution_checked": 519,
+    "page_attribution_accuracy": 0.9962,
+    "page_attribution_checked": 533,
     "method": "exact / normalized string matching of the value inside the cited evidence (no model)"
   },
   "tables": {
@@ -861,7 +871,7 @@
     "mean_cer": 0.0015,
     "mean_wer": 0.0064,
     "mean_key_token_recall": 0.9917,
-    "upload_ms_per_scanned_document_mean": 3368,
+    "upload_ms_per_scanned_document_mean": 4194,
     "note": "CER/WER on whitespace-normalized page text vs the exact text drawn on the scan; Tesseract confidence is an engine score, not a probability"
   },
   "queries_before_review": {
@@ -1006,9 +1016,9 @@
     "total": 6
   },
   "review": {
-    "correction_rate": 0.0242,
-    "corrected_fields": 12,
-    "field_slots": 495,
+    "correction_rate": 0.0254,
+    "corrected_fields": 13,
+    "field_slots": 511,
     "approved": 26,
     "rejected": 6,
     "approval_consistency": 1.0,
@@ -1082,7 +1092,7 @@
         "decision": "approved"
       },
       "di-c13": {
-        "corrections": 4,
+        "corrections": 5,
         "status_before": "needs_review",
         "decision": "approved"
       },
@@ -1411,6 +1421,7 @@
       "notes": "indefinite lease: no expiration date; novel labels (Najmoprimac / Najmodavac / Mjesečna najamnina)",
       "problems": [
         "contract_value: predicted None, expected '3600.00'",
+        "value_period: predicted None, expected 'monthly'",
         "currency: predicted None, expected 'EUR'",
         "parties: predicted None, expected 'Northstar Manufacturing d.o.o.'",
         "parties: predicted None, expected 'Gradski Centar Nekretnine d.o.o.'"

@@ -49,6 +49,22 @@ def test_compare_two_contracts_with_citations(docs):
                 assert v["evidence"]["page"] >= 1 and v["evidence"]["text"]
 
 
+def test_equivalent_jurisdictions_and_different_value_periods(scenario):
+    client, token, _ = scenario
+    fin = token("finance@northstar.demo")
+    ids = []
+    for lid in ("di-c01", "di-c02"):  # English 'Republic of Croatia' / Croatian 'Republike Hrvatske'
+        path = CORPUS / LABELS[lid]["file"]
+        ids.append(client.post("/api/documents", headers=fin, files={"file": (path.name, path.read_bytes(), "x")},
+                               data={"groups": "finance"}).json()["id"])
+    by = {f["field"]: f for f in client.post("/api/intelligence/compare", headers=fin,
+                                              json={"document_ids": ids}).json()["fields"]}
+    assert by["governing_law"]["analysis"]["all_equal"] is True          # no false conflict
+    value = by["contract_value"]["analysis"]                              # annual vs total
+    assert value["comparable"] is False and "lowest" not in value and "highest" not in value
+    assert sorted(value["value_periods"].values()) == ["annual", "total"]
+
+
 def test_structured_queries(docs):
     client, token, _, ids = docs
     h = token("finance@northstar.demo")

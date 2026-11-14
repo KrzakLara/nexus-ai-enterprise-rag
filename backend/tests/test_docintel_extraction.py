@@ -65,6 +65,30 @@ def test_conflicting_values_inside_one_document_are_flagged_not_resolved():
     assert [i.code for i in exp.issues] == ["conflicting_values_in_document"] and exp.issues[0].actual == "2029-06-30"
 
 
+def test_jurisdiction_is_canonical_and_the_wording_stays_as_evidence():
+    en = {f.name: f for f in rules.extract(parsed("di-c01"), "di-c01", "contract")}["governing_law"]
+    hr = {f.name: f for f in rules.extract(parsed("di-c02"), "di-c02", "contract")}["governing_law"]
+    assert en.value == hr.value == "Croatia"
+    assert "Republic of Croatia" in en.evidence.text and "Republike Hrvatske" in hr.evidence.text
+    assert grounding.ground(en, parsed("di-c01"), "di-c01") == ("exact", [])      # 'Croatia' is in the text
+    assert grounding.ground(hr, parsed("di-c02"), "di-c02") == ("normalized", [])  # via the alias table
+
+
+@pytest.mark.parametrize("doc_id, period", [("di-c01", "annual"), ("di-c02", "total")])
+def test_value_period_comes_from_the_value_label(doc_id, period):
+    f = {x.name: x for x in rules.extract(parsed(doc_id), doc_id, "contract")}
+    assert f["value_period"].value == period and f["value_period"].evidence == f["contract_value"].evidence
+    assert grounding.ground(f["value_period"], parsed(doc_id), doc_id)[0] in ("exact", "normalized")
+
+
+def test_value_period_validation():
+    base = {"contract_id": "C-1", "parties[0]": "A", "effective_date": "2026-01-01", "contract_value": "10.00",
+            "currency": "EUR"}
+    assert [i.code for i in validate("contract", base)] == ["value_period_missing"]
+    assert codes(validate("contract", base | {"value_period": "weekly"})) == ["invalid_value_period"]
+    assert validate("contract", base | {"value_period": "monthly"}) == []
+
+
 def test_missing_fields_stay_missing():
     fields = {f.name: f.value for f in rules.extract(parsed("di-c04"), "di-c04", "contract")}
     for absent in ("contract_value", "currency", "payment_terms", "notice_period", "auto_renewal"):

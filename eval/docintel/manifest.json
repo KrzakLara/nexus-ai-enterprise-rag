@@ -1,5 +1,7 @@
 {
   "generator": "scripts/build_docintel_dataset.py",
+  "dataset_version": "1.1",
+  "errata": "eval/docintel/ERRATA.md",
   "documents": 32,
   "scan_dpi": 200,
   "files": {
@@ -35,7 +37,7 @@
     "documents/di-i14.pdf": "3b140b3d2005711464cd336caf53e31146235961a4e21a3ad4aee943345e8a5f",
     "documents/di-o01.pdf": "fb5ec77d8a4630db8bd76dd7f491b1e06ee671f8b15726262febe203b209f0e5",
     "documents/di-o02.txt": "923645d02b7b78bf4548517b450d79b92b3328fc2cc4430b6a495a44fef54f03",
-    "labels.jsonl": "8ce90ac2e89aeec290580e172b7c1481acc6150c3bd3da409e2cd7d18e11d3c7",
+    "labels.jsonl": "c3c53289747701b399f434a6b1ad53bda150932d493114c586fe66efd21b69fa",
     "ocr_truth.jsonl": "eb19a44196143f5105c54a2a5b28f9560f3143073e9d32f01cb0c7f8b38230a6",
     "queries.json": "7613c915d39e32052f26e5ab8dc9bab173804994fdc575dca40fbbea9d2e4576"
   }

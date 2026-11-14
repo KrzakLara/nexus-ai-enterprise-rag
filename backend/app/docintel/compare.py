@@ -25,7 +25,8 @@ from .schemas import base_name
 from .service import effective, field_state
 
 COMPARE_FIELDS = {
-    "contract": ["contract_id", "parties", "effective_date", "expiration_date", "contract_value", "currency",
+    "contract": ["contract_id", "parties", "effective_date", "expiration_date", "contract_value", "value_period",
+                 "currency",
                  "payment_terms", "notice_period", "auto_renewal", "governing_law", "termination_conditions",
                  "obligations"],
     "invoice": ["supplier_name", "supplier_tax_id", "customer_name", "invoice_date", "due_date", "currency",
@@ -114,6 +115,18 @@ def compare(db: Session, user: User, document_ids: list[str], fields: list[str] 
                           "all_equal": len(distinct) == 1 and len(present) == len(entries),
                           "differs": len(distinct) > 1}
         scalar = [(doc, vals[0]) for doc, vals in present if len(vals) == 1]
+        if name == "contract_value":
+            # an annual fee, a total and a monthly rent are different quantities: rank them only
+            # when every compared document states the same value_period
+            periods = {d.id: (_values(fs).get("value_period") or [{}])[0].get("value") for d, _, fs in used}
+            stated = {periods[doc.id] for doc, _ in scalar}
+            analysis["value_periods"] = {doc_id: p for doc_id, p in periods.items()}
+            if len(stated) != 1 or None in stated:
+                analysis["comparable"] = False
+                analysis["note"] = "contract values have different or unknown periods; not ranked"
+                scalar = []
+            else:
+                analysis["comparable"] = True
         if scalar and scalar[0][1]["value_type"] in ("date", "money", "decimal", "percent", "duration"):
             vt = scalar[0][1]["value_type"]
             ordered = sorted(scalar, key=lambda dv: _sort_key(vt, dv[1]["value"]))
