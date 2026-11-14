@@ -37,7 +37,17 @@ Open http://localhost:5173 and sign in as `finance@northstar.demo` (password `De
 
 ## 4. Write-path smoke test (optional)
 
-`python scripts/docker_smoke.py` uploads documents, so it must run against a **disposable** API instance. The exact commands are in the script's docstring. Expected output: `20/20 checks passed`.
+`python scripts/docker_smoke.py` uploads documents, so it must run against a **disposable** API instance. The exact commands are in the script's docstring. Expected output: `27/27 checks passed` (Phases 1–3).
+
+## 4b. Document intelligence (Phase 3)
+
+Sign in as `reviewer@northstar.demo` (or `procurement@northstar.demo` for read-only), then open **Document Intelligence**:
+
+1. **di-i06** (scanned invoice): the page header shows the OCR engine, its mean word confidence (an engine score) and the deskew angle; the line-item table is rebuilt from the scan. Click `p. 1` next to `total_amount` to highlight the cited row.
+2. **di-i07** (scanned, wrong total): `total_mismatch` with the expected value; **Approve** is blocked and lists the errors; reject it with a reason, or approve with a recorded override.
+3. **di-c01** and **di-c09** (contract and its amendment): select both, then **Compare**. **Insights → Conflicts** reports the same contract ID with different end date, value and notice period, and the Atlas invoices' different IBANs.
+4. **Insights → Expiring contracts** with *As of* 2026-12-01 and 90 days; the Croatian question *"Koji ugovori ističu u sljedećih 90 dana?"* gives the same answer.
+5. Sign in as `finance@otherco.demo`: none of these documents, extractions or comparisons are visible.
 
 ## 5. Demo assets not yet in the repository
 

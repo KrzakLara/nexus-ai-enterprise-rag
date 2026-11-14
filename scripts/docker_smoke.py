@@ -166,6 +166,37 @@ check("event loop stays responsive during upload (health max < 1 s)",
       latencies and max(latencies) < 1000,
       f"upload {upload_ms:.0f} ms, {len(latencies)} health calls, max {max(latencies):.0f} ms")
 
+# ----------------------------------------------- Phase 3: document intelligence over HTTP
+corpus = Path(__file__).resolve().parents[1] / "eval" / "docintel" / "documents"
+rev = login("reviewer@northstar.demo")
+status, body = upload(fin, "di-i07.pdf", (corpus / "di-i07.pdf").read_bytes(), "finance")
+scan = json.loads(body)
+check("scanned invoice: OCR + classification + extraction stored",
+      status == 201 and scan["processing"]["ocr_pages"] == [1] and scan["processing"]["doc_type"] == "invoice",
+      json.dumps(scan.get("processing")))
+ext = json.loads(call(f"/api/documents/{scan['id']}/extraction", token=rev)[1])
+codes = {i["code"] for f in ext["fields"] for i in f["issues"]}
+check("scanned invoice with a wrong total is flagged (total_mismatch, needs_review)",
+      ext["status"] == "needs_review" and "total_mismatch" in codes, ext["status"])
+s1, _ = call(f"/api/extractions/{ext['id']}/approve", {"expected_version": ext["version"]}, rev)
+s2, body = call(f"/api/extractions/{ext['id']}/reject", {"expected_version": ext["version"], "comment": "total is wrong"}, rev)
+check("approval blocked by validation, rejection recorded", s1 == 409 and s2 == 200 and json.loads(body)["status"] == "rejected",
+      f"{s1}/{s2}")
+status, body = upload(fin, "di-i03.xlsx", (corpus / "di-i03.xlsx").read_bytes(), "finance")
+xlsx = json.loads(body)
+ext2 = json.loads(call(f"/api/documents/{xlsx['id']}/extraction", token=rev)[1])
+s3, body = call(f"/api/extractions/{ext2['id']}/approve", {"expected_version": ext2["version"], "comment": "ok"}, rev)
+check("XLSX invoice extracted and approved", status == 201 and s3 == 200 and json.loads(body)["status"] == "approved", f"{status}/{s3}")
+s4, _ = call(f"/api/documents/{xlsx['id']}/extraction", token=hr)
+s5, _ = call(f"/api/extractions/{ext2['id']}/approve", {"expected_version": 1}, oc)
+s6, cbody = call("/api/intelligence/compare", {"document_ids": [xlsx["id"], doc_id]}, hr)
+check("extraction, review and compare respect the ACL (404 for other group / tenant)",
+      s4 == 404 and s5 == 404 and s6 == 404 and xlsx["id"] not in cbody.decode(), f"{s4}/{s5}/{s6}")
+q = json.loads(call("/api/intelligence/query", {"type": "invalid_invoices"}, rev)[1])
+check("rejected invoice excluded from the invalid-invoice query", all(m["document_id"] != scan["id"] for m in q["matches"]))
+hist = json.loads(call(f"/api/extractions/{ext['id']}/history", token=rev)[1])["events"]
+check("review history: process, reject", [e["action"] for e in hist] == ["process", "reject"])
+
 with urllib.request.urlopen(ARGS.frontend.rstrip("/") + "/", timeout=30) as r:
     html = r.read().decode()
 check("frontend (main stack) serves the app", r.status == 200 and 'id="root"' in html)
