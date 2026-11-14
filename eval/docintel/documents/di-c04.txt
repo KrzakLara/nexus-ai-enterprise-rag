@@ -1,0 +1,22 @@
+MUTUAL NON-DISCLOSURE AGREEMENT
+
+Agreement ID: NS-NDA-2026-007
+Party A: Northstar Manufacturing d.o.o.
+Party B: Helios Analytics Ltd
+Effective date: 10/02/2026
+End date: 09/02/2029
+
+1. SCOPE
+
+Each party shall keep the other party's confidential information strictly confidential.
+
+2. COMMERCIAL TERMS
+
+3. TERM AND TERMINATION
+
+Either party may terminate this Agreement for material breach that is not cured within
+30 days of written notice.
+
+4. FINAL PROVISIONS
+
+This Agreement is governed by the laws of England and Wales.

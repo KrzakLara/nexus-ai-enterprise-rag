@@ -26,6 +26,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install uv==0.13.7
+      - name: Tesseract OCR (English + Croatian) for Phase 3 scanned-document tests and gates
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-hrv
       - run: uv sync --locked --extra dev
       - name: Cache embedding model
         uses: actions/cache@v4
@@ -47,6 +49,16 @@ jobs:
         with:
           name: evaluation-ci-report
           path: eval/reports/ci*.json*
+      - name: Document-intelligence gates (frozen 32-document corpus, real OCR, PostgreSQL, security matrix)
+        # Fails on: any authorization violation, any unprocessed document, validation false accepts,
+        # a refused-stale-edit regression, or metrics below eval/docintel/ci_thresholds.json.
+        run: uv run python scripts/evaluate_docintel.py --ci --database-url postgresql+psycopg://nexus:ci_only@localhost:5432/nexus_docintel_eval
+      - name: Upload document-intelligence CI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docintel-ci-report
+          path: eval/docintel/reports/ci.json
       - name: Retrieval/ACL smoke evaluation on a migrated + seeded PostgreSQL database
         env:
           DATABASE_URL: postgresql+psycopg://nexus:ci_only@localhost:5432/nexus

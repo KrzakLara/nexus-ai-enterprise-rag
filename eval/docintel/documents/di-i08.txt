@@ -1,0 +1,19 @@
+INVOICE MER-2026-77
+
+Invoice number: MER-2026-77
+Invoice date: 2026-09-15
+Due date: 2026-10-15
+Supplier: Meridian Advisory LLP
+VAT ID: US 98-7654321
+Customer: Northstar Manufacturing d.o.o.
+Currency: USD
+
+Description                      Qty   Unit price   VAT %         Amount
+Strategy consulting (hours)       24       210.00      0%       5,040.00
+Travel expenses                    1       640.00      0%         640.00
+Subtotal                                                    5,680.00 USD
+VAT                                                             0.00 USD
+Total due                                                   5,680.00 USD
+
+IBAN: GB29 NWBK 6016 1331 9268 19
+Payment reference: MER-77

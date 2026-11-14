@@ -15,6 +15,7 @@ dist/
 *.egg-info/
 *.tsbuildinfo
 eval/reports/ci*
+eval/docintel/reports/ci*
 # Local tooling, agent files and caches
 .claude/
 .mypy_cache/
