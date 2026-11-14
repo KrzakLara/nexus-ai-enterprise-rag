@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-**Current release:** v0.2-dev (Phase 2d). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
+**Current release:** v0.2.0 (Phases 1–2: MVP and advanced hybrid RAG). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
 
 ## Context and goals
 
@@ -36,7 +36,7 @@ flowchart LR
   API --> Files[Original-file storage]
 ```
 
-Data plane: upload parses documents synchronously and stores a checksum, document metadata, source text chunks, field evidence and a local copy of the original. It then embeds the new chunks with the local model (PostgreSQL only). Retrieval only reads chunks the user is authorized for: the ACL subquery sits in the same SQL statement as BM25 candidate loading or the vector `ORDER BY ... LIMIT k`. In keyless mode, the backend returns annotated source excerpts. With an API key, it calls an LLM with these authorized excerpts and verifies that cited source IDs exist.
+Data plane: upload parses documents synchronously within the request (in FastAPI's worker threadpool, so the event loop keeps serving other requests; there is no background queue yet) and stores a checksum, document metadata, source text chunks, field evidence and a local copy of the original. It then embeds the new chunks with the local model (PostgreSQL only). Retrieval only reads chunks the user is authorized for: the ACL subquery sits in the same SQL statement as BM25 candidate loading or the vector `ORDER BY ... LIMIT k`. In keyless mode, the backend quotes query-selected sentences of the authorized hits verbatim. With an API key, it calls an LLM with these authorized excerpts and verifies that cited source IDs exist. If the call fails or the citations cannot be verified, the model text is discarded and the verbatim quotes are returned instead (`provider_error` / `citation_validation_failed`).
 
 Control plane: users have a tenant, an assigned role and a list of groups. A document has an owner, tenant and explicit grants. Visibility = same tenant AND (admin OR owner OR share-group match). A document with no grants is not publicly visible. For security testing, a separate Otherco tenant has a unique budget codename.
 
@@ -48,9 +48,9 @@ Retrieval is implemented as an authorized `Document.id` subquery joined to `Chun
 
 This demo filters at the application SQL layer. It does not implement database Row-Level Security, external authorization services, hardened secret handling or a certified compliance boundary. Test the ACL invariants before any semantic-search migration.
 
-## ADR-002: Inspectable lexical baseline first (still the default mode)
+## ADR-002: Inspectable lexical baseline first (default only on SQLite)
 
-The lexical path is still a small in-process BM25 scorer. It caps retrieval at 2,000 authorized chunks, ordered by document ID rather than relevance, and is **not suitable for a large corpus**. PostgreSQL FTS (`tsvector` + GIN) will replace it in v0.2b.
+The v0.1 lexical path is a small in-process BM25 scorer. It caps retrieval at 2,000 authorized chunks, ordered by document ID rather than relevance, and is **not suitable for a large corpus**. PostgreSQL FTS (`tsvector` + GIN, ADR-008) replaced it as the scalable lexical branch in v0.2b. BM25 is kept as a measured baseline (`mode=bm25`). Since v0.2.0 it is the default only on SQLite; on PostgreSQL a request without `mode` uses `hybrid`.
 
 ## ADR-005: Exact, permission-scoped vector search before ANN
 
@@ -78,7 +78,7 @@ Security test: `test_unauthorized_documents_never_returned_even_when_semanticall
 - Storage: `chunk_embeddings(chunk_id, model_name)` primary key, `vector(384)`, `model_revision` (Hugging Face commit hash), `embedding_dim` (CHECK = 384), `normalized`, `content_sha256`, `created_at`. Deleting a chunk cascades to its embeddings.
 - Idempotency: a chunk is embedded only when it has no row for the configured model or when its `content_sha256` differs from the stored one. Backfill and seeding can be re-run safely.
 - No fake vectors: load errors, wrong dimensions, NaN or unnormalized output raise `EmbeddingError`. Upload keeps the document and reports `embedding_status: failed`, and the backfill retries later.
-- The model loads lazily in the API process, so the first semantic query after start pays the load time (~10 s measured in Docker with a warm cache).
+- The model is loaded once per API process. Since v0.2.0 the API loads it at startup in a worker thread (`EMBEDDING_WARMUP=true`, PostgreSQL only), so the first semantic query does not pay the cold start (~15 s measured by `scripts/evaluate.py` on the dev machine). A failed load is logged and does not stop the API; semantic and hybrid then return HTTP 503.
 
 ## ADR-008: PostgreSQL full-text search with the `simple` configuration
 
@@ -226,6 +226,7 @@ flowchart TD
 1. **v0.2b (done):** PostgreSQL FTS (`simple`, GIN), hybrid RRF, four API/UI modes with diagnostics, PostgreSQL security tests.
 1. **v0.2c (done):** 100-question chunk-level evaluation, four-mode benchmark with CIs, RRF ablation, calibrated evidence-sufficiency policy, citation and security evaluation, CI gates, evaluation UI.
 1. **v0.2d (done):** query-aware extractive answers, sentence-level evidence policy, embedder comparison (e5-small kept). Deferred: query translation / expansion, LLM answer evaluation, chunk-size ablation.
+1. **v0.2.0 (release):** PDF/DOCX and upload tests, complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid default on PostgreSQL.
 2. **v0.3 — document AI:** Docling/OCR, table extraction, layout-aware chunking, Pydantic schema extraction, confidence + human review.
 3. **v0.4 — governance:** OIDC, Postgres RLS, signed document links, async jobs, per-tenant observability, source deletion and permission-change reindexing.
 4. **v1.0 — engineering evidence:** retrieval and answer eval suite, injection tests, load benchmarks, latency/cost dashboards, threat model and demo video.

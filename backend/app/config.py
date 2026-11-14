@@ -29,6 +29,8 @@ class Settings:
     embedding_device: str = os.getenv("EMBEDDING_DEVICE", "cpu")
     embedding_batch_size: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
     embed_on_upload: bool = _flag("EMBED_ON_UPLOAD", "true")
+    # Load the model at API startup (PostgreSQL only) instead of on the first semantic query.
+    embedding_warmup: bool = _flag("EMBEDDING_WARMUP", "true")
     # Hybrid retrieval (PostgreSQL FTS + pgvector, fused with Reciprocal Rank Fusion)
     retrieval_candidates: int = int(os.getenv("RETRIEVAL_CANDIDATES", "50"))  # per branch
     rrf_k: int = int(os.getenv("RRF_K", "60"))

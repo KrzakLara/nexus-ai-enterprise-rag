@@ -24,6 +24,15 @@ export const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
   bm25: 'BM25 (baseline)', lexical: 'Keyword · PostgreSQL FTS',
   semantic: 'Semantic · pgvector', hybrid: 'Hybrid · RRF',
 };
+/** Answer `mode` values returned by /api/ask (backend/app/rag.py). */
+export const ANSWER_MODE_LABELS: Record<string, string> = {
+  llm: 'LLM-generated · citations verified',
+  extractive: 'Offline extractive · verbatim quotes',
+  no_evidence: 'No sufficient evidence · abstained',
+  provider_error: 'LLM unavailable · verbatim fallback',
+  citation_validation_failed: 'LLM citations rejected · verbatim fallback',
+};
+export type UploadResult = { id: string; title: string; pages: number; fields_extracted: number; embedding_status: string };
 export type Diagnostics = {
   mode: RetrievalMode; source_count: number; retrieval_ms: Record<string, number>;
   branch_candidates: Record<string, number>; score_note: string;
@@ -93,7 +102,7 @@ export const api = {
   evaluation: (token: string) => request<EvaluationSummary>('/api/evaluation/summary', token),
   upload: (token: string, file: File, groups: string[]) => {
     const body = new FormData(); body.append('file', file); body.append('groups', groups.join(','));
-    return request<{ id: string }>('/api/documents', token, { method: 'POST', body });
+    return request<UploadResult>('/api/documents', token, { method: 'POST', body });
   },
   download: async (token: string, doc: Document | DocumentDetail) => {
     const response = await fetch(`${API_BASE}/api/documents/${doc.id}/source`,
