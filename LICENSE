@@ -1,12 +1,6 @@
-DRAFT - NOT IN EFFECT. Proposed license for NEXUS AI's own source code, pending the repository
-owner's approval. Until a LICENSE file is committed at the repository root, no license is granted.
-Third-party components keep their own licenses (see THIRD_PARTY_NOTICES.md); MIT does not replace them.
-
-----------------------------------------------------------------------------------------------------
-
 MIT License
 
-Copyright (c) 2026 [copyright holder name - to be confirmed by the repository owner]
+Copyright (c) 2026 Lara Krzak
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
