@@ -78,6 +78,8 @@ PEOPLE = [
     ("finance@northstar.demo", "northstar", "member", ["finance"]),
     ("admin@northstar.demo", "northstar", "admin", ["hr", "finance"]),
     ("finance@otherco.demo", "otherco", "member", ["finance"]),
+    ("reviewer@northstar.demo", "northstar", "reviewer", ["finance"]),  # u4: Phase 3 review rights
+    ("reviewer@otherco.demo", "otherco", "reviewer", ["finance"]),      # u5
 ]
 DOCS = [
     ("d_hr", "northstar", "u0", "Compensation policy", ["hr"],

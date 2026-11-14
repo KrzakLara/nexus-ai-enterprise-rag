@@ -160,7 +160,9 @@ def test_docx_upload_is_retrievable_with_table_content(scenario):
     ("broken.pdf", b"%PDF-1.4\nnot a pdf", 422, "could not be parsed"),
     ("scan.pdf", make_pdf([[]]), 422, "No selectable text"),
     ("broken.docx", b"PK\x03\x04 junk", 422, "could not be parsed"),
-    ("sheet.xlsx", b"x", 415, "Supported"),
+    ("slides.pptx", b"x", 415, "Supported"),
+    # XLSX is supported since Phase 3: a broken one is malformed (422), no longer unsupported (415)
+    ("sheet.xlsx", b"x", 422, "could not be parsed"),
 ])
 def test_upload_rejects_bad_files_and_stores_nothing(scenario, filename, data, status, detail):
     client, token, factory = scenario
