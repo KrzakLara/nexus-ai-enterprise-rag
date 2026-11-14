@@ -44,7 +44,7 @@ DATA = ROOT / "eval" / "docintel"
 PASSWORD = "EvalPass123!"
 SCALAR = {
     "contract": {"contract_id": "text", "contract_type": "text", "effective_date": "date",
-                 "expiration_date": "date", "contract_value": "money", "currency": "currency",
+                 "expiration_date": "date", "contract_value": "money", "value_period": "text", "currency": "currency",
                  "payment_terms": "duration", "notice_period": "duration", "auto_renewal": "bool",
                  "governing_law": "text"},
     "invoice": {"invoice_number": "text", "supplier_name": "text", "supplier_tax_id": "tax_id",

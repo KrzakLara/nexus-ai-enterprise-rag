@@ -60,6 +60,13 @@ def validate_contract(v: dict) -> list[ValidationIssue]:
         issues.append(_issue("expiration_date", "expiration_not_after_effective",
                              "expiration date must be after the effective date",
                              expected=f"> {start.isoformat()}", actual=end.isoformat()))
+    period = v.get("value_period")
+    if period is not None and period not in ("annual", "total", "monthly"):
+        issues.append(_issue("value_period", "invalid_value_period", "value_period must be annual, total or monthly",
+                             actual=period))
+    if v.get("contract_value") is not None and period is None:
+        issues.append(_issue("value_period", "value_period_missing",
+                             "the contract value has no stated period (annual / total / monthly)", "warning"))
     value = _dec(v, "contract_value")
     if value is not None and value < 0:
         issues.append(_issue("contract_value", "negative_amount", "contract value is negative", actual=value))

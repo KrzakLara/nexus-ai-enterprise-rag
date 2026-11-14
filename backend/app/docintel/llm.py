@@ -118,7 +118,7 @@ def _labelled_line_ok(doc_type: str, name: str, line: str) -> bool:
     if name not in LABELLED.get(doc_type, set()):
         return True
     labels = _sorted_labels({name: LABELS[doc_type][name]})
-    return any(field == name for field, _, _ in _label_hits(line, labels))
+    return any(field == name for field, _, _, _ in _label_hits(line, labels))
 
 
 def ground_llm_output(output: LLMOutput, doc: ParsedDocument, document_id: str,

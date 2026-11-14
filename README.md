@@ -76,13 +76,13 @@ Upload a contract or an invoice (text PDF, **scanned PDF**, DOCX, **XLSX**, TXT,
 
 **Multi-document queries** answer questions such as *"Which contracts expire within 90 days?"*, *"Which invoices fail validation?"* and *"Which documents conflict?"* (same contract ID with different terms; same supplier with a different IBAN). They use deterministic logic over authorized, evidence-backed fields.
 
-Measured on a frozen 32-document corpus (16 contracts, 14 invoices, 2 other; 7 scanned and 1 mixed PDF; EN + HR; 2 tenants), offline rules provider, `eval/docintel/reports/latest.json` (2026-11-14):
+Measured on a frozen 32-document corpus (16 contracts, 14 invoices, 2 other; 7 scanned and 1 mixed PDF; EN + HR; 2 tenants), offline rules provider, dataset **v1.1** (label errata in [`eval/docintel/ERRATA.md`](eval/docintel/ERRATA.md)), `eval/docintel/reports/latest.json` (2026-11-14):
 
 | Metric | Result |
 |---|---|
-| Field F1 (all / dev / **test**) | 0.986 / 0.995 / **0.973** (exact match 0.975, 360 field slots) |
+| Field F1 (all / dev / **test**) | 0.985 / 0.995 / **0.971** (exact match 0.973, 376 field slots) |
 | Invented values for absent fields | 0 of 9 |
-| Evidence supports the value / on the right page | 100 % / 99.6 % (519 values) |
+| Evidence supports the value / on the right page | 100 % / 99.6 % (533 values) |
 | Line-item cells / rows | 135/135 / 27/27 |
 | OCR on 10 scanned pages (CER / key-token recall) | 0.0015 / 0.992 |
 | Invalid invoices blocked from approval / validation false accepts | 4/4 / 0 |

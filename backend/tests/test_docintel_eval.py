@@ -57,6 +57,33 @@ def test_frozen_corpus_matches_its_manifest_and_requirements():
             assert x["line_items"] and "line_items" in x["pages"]
 
 
+def test_dataset_v1_1_errata_hold():
+    """ERRATA.md A-C: canonical decimals, one jurisdiction name, value_period on every value."""
+    import re
+
+    manifest = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["dataset_version"] == "1.1" and (DATA / "ERRATA.md").is_file()
+    labels = [json.loads(x) for x in (DATA / "labels.jsonl").read_text(encoding="utf-8").splitlines()]
+    numeric = re.compile(r"-?\d+(\.\d+)?")
+    for x in labels:
+        for item in x["line_items"]:
+            for col in ("quantity", "unit_price", "tax_rate", "amount"):
+                assert numeric.fullmatch(item[col]), (x["id"], col, item[col])           # A: no '4E+1'
+        for name in ("contract_value", "subtotal", "tax_amount", "total_amount"):
+            v = x["fields"].get(name)
+            assert v is None or numeric.fullmatch(v), (x["id"], name, v)
+        if x["doc_type"] == "contract":
+            assert "republic" not in (x["fields"].get("governing_law") or "").lower()   # B
+            has_value = x["fields"].get("contract_value") is not None
+            assert (x["fields"].get("value_period") in ("annual", "total", "monthly")) == has_value, x["id"]  # C
+    c13 = next(x for x in labels if x["id"] == "di-c13")
+    assert (c13["fields"]["contract_value"], c13["fields"]["value_period"]) == ("3600.00", "monthly")
+    # the source documents did not change between v1.0 and v1.1
+    v10 = json.loads((DATA / "reports" / "archive" / "dataset-v1.0-manifest.json").read_text(encoding="utf-8"))
+    docs = {k: v for k, v in v10["files"].items() if k.startswith("documents/")}
+    assert len(docs) == 32 and all(manifest["files"][k] == v for k, v in docs.items())
+
+
 def passing() -> dict:
     return {"security": {"total_violations": 0}, "meta": {"uploads_ok": 32, "documents": 32},
             "extraction": {"groups": {"all": {"f1": 0.99}, "split:test": {"f1": 0.99}}},

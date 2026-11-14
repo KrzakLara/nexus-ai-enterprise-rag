@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.evaluation import docgen  # noqa: E402
-from backend.evaluation.docintel_corpus import OWNER, QUERIES, build  # noqa: E402
+from backend.evaluation.docintel_corpus import DATASET_VERSION, OWNER, QUERIES, build  # noqa: E402
 
 OUT = ROOT / "eval" / "docintel"
 EXT = {"pdf": "pdf", "scan": "pdf", "mixed": "pdf", "docx": "docx", "xlsx": "xlsx", "txt": "txt", "md": "md"}
@@ -47,6 +47,7 @@ def render(spec) -> tuple[bytes, dict[str, int], dict[int, str]]:
         tags.setdefault("contract_type", 1)                 # derived from the title on page 1
         if "contract_value" in tags:
             tags.setdefault("currency", tags["contract_value"])  # printed in the value line
+            tags.setdefault("value_period", tags["contract_value"])  # stated by the value label
     if spec.doc_type == "invoice" and "line_items" in tags:
         for name in ("subtotal", "tax_amount", "total_amount"):  # totals rows of the item table
             tags.setdefault(name, tags["line_items"])
@@ -78,7 +79,8 @@ def main() -> int:
     files["labels.jsonl"] = "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in labels).encode()
     files["ocr_truth.jsonl"] = "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in ocr_rows).encode()
     files["queries.json"] = (json.dumps(QUERIES, ensure_ascii=False, indent=2) + "\n").encode()
-    manifest = {"generator": "scripts/build_docintel_dataset.py", "documents": len(specs),
+    manifest = {"generator": "scripts/build_docintel_dataset.py", "dataset_version": DATASET_VERSION,
+                "errata": "eval/docintel/ERRATA.md", "documents": len(specs),
                 "scan_dpi": docgen.SCAN_DPI,
                 "files": {k: hashlib.sha256(v).hexdigest() for k, v in sorted(files.items())}}
     if args.check:

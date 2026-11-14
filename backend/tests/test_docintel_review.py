@@ -108,6 +108,22 @@ def test_review_lifecycle_with_versions_corrections_and_audit(scenario):
     assert last.action == "reprocess" and "forced from rejected" in last.comment
 
 
+def test_corrections_read_scientific_notation_as_numbers_and_restrict_value_period(scenario):
+    client, token, _ = scenario
+    rev = token("reviewer@northstar.demo")
+    inv = upload(client, token("finance@northstar.demo"), "di-i01")["id"]
+    ext = client.get(f"/api/documents/{inv}/extraction", headers=rev).json()
+    fixed = client.patch(f"/api/extractions/{ext['id']}/fields", headers=rev, json={
+        "expected_version": ext["version"], "corrections": [{"name": "line_items[1].quantity", "value": "4E+1"}]}).json()
+    q = next(f for f in fixed["fields"] if f["name"] == "line_items[1].quantity")
+    assert q["value"] == "40"                       # not '4' (the v1.0 erratum-A failure mode)
+    con = upload(client, token("finance@northstar.demo"), "di-c01")["id"]
+    cext = client.get(f"/api/documents/{con}/extraction", headers=rev).json()
+    bad = client.patch(f"/api/extractions/{cext['id']}/fields", headers=rev, json={
+        "expected_version": cext["version"], "corrections": [{"name": "value_period", "value": "weekly"}]})
+    assert bad.status_code == 422 and "annual, total, monthly" in bad.json()["detail"]["message"]
+
+
 def test_approval_of_a_valid_invoice_and_override_audit(scenario):
     client, token, _ = scenario
     rev = token("reviewer@northstar.demo")

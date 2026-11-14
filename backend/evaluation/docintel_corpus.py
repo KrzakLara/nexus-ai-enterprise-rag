@@ -32,6 +32,7 @@ HR_MONTHS = ["siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja",
 EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
              "October", "November", "December"]
 CENT = Decimal("0.01")
+DATASET_VERSION = "1.1"  # 1.0 -> 1.1: label errata A-C, see eval/docintel/ERRATA.md
 
 
 @dataclass
@@ -77,6 +78,12 @@ def hr_iban(bban: str) -> str:
     return " ".join(compact[i:i + 4] for i in range(0, len(compact), 4))
 
 
+def canon(v) -> str:
+    """Canonical decimal string: no exponent, no trailing zeros ('40', '1.5', '25'). Dataset v1.1
+    fix: v1.0 used str(Decimal.normalize()), which writes 40 as '4E+1' (erratum A)."""
+    return format(Decimal(v).normalize(), "f")
+
+
 def c2(v: Decimal) -> str:
     return str(v.quantize(CENT, rounding=ROUND_HALF_UP))
 
@@ -109,8 +116,8 @@ def invoice(id, split, lang, fmt, tenant, groups, number, supplier, tax_id, cust
         tax += printed * Decimal(rate) / 100
         qty_text = str(qty) if Decimal(qty) == int(Decimal(qty)) else money(Decimal(qty), num_style)
         rows.append([desc, qty_text, money(Decimal(price), num_style), f"{rate}%", money(printed, num_style)])
-        gt_items.append({"description": desc, "quantity": str(Decimal(qty).normalize()), "unit_price": c2(Decimal(price)),
-                         "tax_rate": str(Decimal(rate).normalize()), "amount": c2(printed)})
+        gt_items.append({"description": desc, "quantity": canon(qty), "unit_price": c2(Decimal(price)),
+                         "tax_rate": canon(rate), "amount": c2(printed)})
     tax = tax.quantize(CENT, rounding=ROUND_HALF_UP)
     subtotal_p = subtotal + perturb.get("subtotal", Decimal(0))
     total_p = subtotal_p + tax + perturb.get("total", Decimal(0))
@@ -163,6 +170,12 @@ CON_TEXT = {
            "notice": "Otkazni rok", "pay": "Rok plaćanja", "law": "Mjerodavno pravo",
            "party_a": "Naručitelj", "party_b": "Dobavljač"},
 }
+
+
+# Erratum C (v1.1): the printed value label decides what contract_value MEANS. An authoring table,
+# not extractor logic; every label used in the corpus must be listed (asserted in contract()).
+VALUE_PERIOD_OF_LABEL = {"Annual value": "annual", "Vrijednost ugovora": "total", "Contract value": "total",
+                         "Mjesečna najamnina": "monthly"}
 
 
 def contract(id, split, lang, fmt, tenant, groups, title, ctype, cid, party_a, party_b, start, end, value,
@@ -224,6 +237,7 @@ def contract(id, split, lang, fmt, tenant, groups, title, ctype, cid, party_a, p
     fields = {"contract_id": cid, "contract_type": ctype, "effective_date": start.isoformat(),
               "expiration_date": end.isoformat() if end else None,
               "contract_value": c2(value) if value is not None else None,
+              "value_period": VALUE_PERIOD_OF_LABEL[T["value"]] if value is not None else None,
               "currency": currency if value is not None else None,
               "payment_terms": f"P{pay_days}D" if pay_days else None, "notice_period": notice_iso,
               "auto_renewal": None if auto_renew is None else ("true" if auto_renew else "false"),
@@ -256,7 +270,7 @@ def build() -> list[DocSpec]:
         contract("di-c01", "dev", "en", "pdf", "northstar", ["procurement", "legal"],
                  "Atlas Logistics Supply Agreement", "supply", "NS-SUP-2026-101", "Northstar Manufacturing d.o.o.",
                  "Atlas Logistics GmbH", D(2026, 1, 15), D(2027, 1, 14), Decimal("184000"), "EUR", 45,
-                 "90 days", "P90D", True, LAW_HR_EN, "Republic of Croatia", EN_OBL, num_style="en",
+                 "90 days", "P90D", True, LAW_HR_EN, "Croatia", EN_OBL, num_style="en",
                  date_style="en_long",
                  schedule=(["Milestone", "Due date", "Amount"],
                            [["Mobilisation", "2026-02-01", "EUR 20,000.00"], ["Quarterly fee", "2026-04-01", "EUR 41,000.00"]]),
@@ -289,7 +303,7 @@ def build() -> list[DocSpec]:
         contract("di-c06", "dev", "en", "scan", "northstar", ["procurement"],
                  "Borealis Packaging Supply Agreement", "supply", "NS-SUP-2026-131", "Northstar Manufacturing d.o.o.",
                  "Borealis Packaging AB", D(2026, 6, 1), D(2027, 5, 31), Decimal("96500"), "EUR", 60, "90 days",
-                 "P90D", False, LAW_HR_EN, "Republic of Croatia", EN_OBL[:1], num_style="en", date_style="iso",
+                 "P90D", False, LAW_HR_EN, "Croatia", EN_OBL[:1], num_style="en", date_style="iso",
                  notes="two scanned pages"),
         contract("di-c07", "dev", "hr", "scan", "northstar", ["procurement"],
                  "Ugovor o pružanju usluga čišćenja", "services", "NS-USL-2026-045", "Northstar Manufacturing d.o.o.",
@@ -299,21 +313,21 @@ def build() -> list[DocSpec]:
         contract("di-c08", "dev", "en", "mixed", "northstar", ["procurement", "finance"],
                  "Warehouse Lease Agreement", "lease", "NS-LEA-2026-003", "Northstar Manufacturing d.o.o.",
                  "Adriatic Property Holdings d.d.", D(2026, 1, 1), D(2030, 12, 31), Decimal("240000"), "EUR", 15,
-                 "6 months", "P6M", True, LAW_HR_EN, "Republic of Croatia",
+                 "6 months", "P6M", True, LAW_HR_EN, "Croatia",
                  ["The Tenant shall keep the premises insured against fire and flood."], num_style="en",
                  date_style="en_us_long", labels={"party_a": "Tenant", "party_b": "Landlord"}, scanned_pages=[2],
                  notes="mixed PDF: page 1 text layer, page 2 scanned"),
         contract("di-c09", "dev", "en", "pdf", "northstar", ["procurement", "legal"],
                  "Amendment No. 1 to the Atlas Logistics Supply Agreement", "amendment", "NS-SUP-2026-101",
                  "Northstar Manufacturing d.o.o.", "Atlas Logistics GmbH", D(2026, 9, 1), D(2027, 12, 31),
-                 Decimal("199000"), "EUR", 45, "120 days", "P120D", True, LAW_HR_EN, "Republic of Croatia", [],
+                 Decimal("199000"), "EUR", 45, "120 days", "P120D", True, LAW_HR_EN, "Croatia", [],
                  num_style="en", date_style="en_long", two_pages=False,
                  notes="same contract ID as di-c01 with different end date, value and notice: a cross-document conflict"),
         # ------------------------------------------------------------------ contracts (test)
         contract("di-c10", "test", "en", "pdf", "northstar", ["procurement"],
                  "Framework Agreement for Maintenance Services", "framework", "NS-FWK-2026-009",
                  "Northstar Manufacturing d.o.o.", "TechServ Solutions Ltd", D(2026, 7, 1), D(2028, 6, 30),
-                 Decimal("150000"), "EUR", 30, "60 days", "P60D", None, LAW_HR_EN, "Republic of Croatia", EN_OBL[1:],
+                 Decimal("150000"), "EUR", 30, "60 days", "P60D", None, LAW_HR_EN, "Croatia", EN_OBL[1:],
                  num_style="en", date_style="eu",
                  extra=[("kv", "End date", fdate(D(2029, 6, 30), "eu"), None)],
                  expected_warnings=["conflicting_values_in_document"],
@@ -325,7 +339,7 @@ def build() -> list[DocSpec]:
         contract("di-c12", "test", "en", "scan", "northstar", ["procurement"],
                  "Security Services Agreement", "services", "NS-SEC-2026-021", "Northstar Manufacturing d.o.o.",
                  "Sentinel Guard Services d.o.o.", D(2026, 11, 1), D(2027, 10, 31), Decimal("54000"), "EUR", 30,
-                 "30 days", "P30D", False, LAW_HR_EN, "Republic of Croatia", EN_OBL[:1], num_style="en",
+                 "30 days", "P30D", False, LAW_HR_EN, "Croatia", EN_OBL[:1], num_style="en",
                  date_style="en_long", labels={"start": "Commencement date", "end": "Expiry date",
                                                "value": "Contract value", "id": "Contract number"},
                  sentence_terms=True, notes="scanned; payment terms and notice only in sentences"),
@@ -339,13 +353,13 @@ def build() -> list[DocSpec]:
                  "Consulting Services Agreement", "services", "NS-CON-2026-033", "Northstar Manufacturing d.o.o.",
                  "Meridian Advisory LLP", D(2026, 8, 15), D(2027, 2, 14), Decimal("38750"), "EUR", 30, "30 days",
                  "P30D", False, "This Agreement is governed by the laws of the Republic of Croatia.",
-                 "Republic of Croatia", ["The Consultant shall deliver a written report every month."], num_style="en",
+                 "Croatia", ["The Consultant shall deliver a written report every month."], num_style="en",
                  date_style="iso", labels={"party_b": "Consultant", "pay": "Payment"},
                  notes="novel label 'Payment'"),
         contract("di-c15", "test", "en", "pdf", "otherco", ["procurement"],
                  "Otherco Raw Materials Supply Agreement", "supply", "OC-SUP-2026-004", "Otherco Industries Ltd",
                  "Atlas Logistics GmbH", D(2026, 3, 1), D(2027, 2, 28), Decimal("88000"), "EUR", 30, "90 days",
-                 "P90D", True, LAW_HR_EN, "Republic of Croatia", EN_OBL[:1], num_style="en", date_style="en_long",
+                 "P90D", True, LAW_HR_EN, "Croatia", EN_OBL[:1], num_style="en", date_style="en_long",
                  notes="other tenant"),
         contract("di-c16", "test", "hr", "scan", "otherco", ["procurement"],
                  "Ugovor o prijevozu robe", "services", "OC-PRI-2026-011", "Otherco Industries d.o.o.",

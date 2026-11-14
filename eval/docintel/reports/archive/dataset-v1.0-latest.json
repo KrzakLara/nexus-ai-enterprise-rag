@@ -1,0 +1,1605 @@
+{
+  "meta": {
+    "generated_at": "2026-11-14T20:04:20Z",
+    "documents": 32,
+    "splits": {
+      "dev": 18,
+      "test": 14
+    },
+    "types": {
+      "contract": 16,
+      "invoice": 14,
+      "unknown": 2
+    },
+    "formats": {
+      "pdf": 10,
+      "docx": 4,
+      "txt": 4,
+      "md": 3,
+      "scan": 7,
+      "mixed": 1,
+      "xlsx": 3
+    },
+    "languages": {
+      "en": 20,
+      "hr": 12
+    },
+    "scanned_pages": 10,
+    "tenants": [
+      "northstar",
+      "otherco"
+    ],
+    "uploads_ok": 32,
+    "ocr": {
+      "engine": "tesseract",
+      "version": "5.5.0",
+      "languages": "eng+hrv"
+    },
+    "parser": [
+      "markdown (headings, pipe tables)",
+      "openpyxl 3.1.5 (one page per worksheet)",
+      "pdfplumber 0.11.10",
+      "pdfplumber 0.11.10 + tesseract 5.5.0",
+      "plain text",
+      "python-docx (one logical page; DOCX has no fixed pagination)"
+    ],
+    "provider": "rules_v1 (offline, deterministic)",
+    "corpus_sha256": "5ada74e1fbf883e5",
+    "platform": "Linux 6.18.58.1-microsoft-standard-WSL2, Python 3.12.16",
+    "total_seconds": 49.4,
+    "mode": "full"
+  },
+  "uploads": {
+    "di-c01": {
+      "status": 201,
+      "ms": 197
+    },
+    "di-c02": {
+      "status": 201,
+      "ms": 51
+    },
+    "di-c03": {
+      "status": 201,
+      "ms": 52
+    },
+    "di-c04": {
+      "status": 201,
+      "ms": 23
+    },
+    "di-c05": {
+      "status": 201,
+      "ms": 23
+    },
+    "di-c06": {
+      "status": 201,
+      "ms": 5024
+    },
+    "di-c07": {
+      "status": 201,
+      "ms": 2702
+    },
+    "di-c08": {
+      "status": 201,
+      "ms": 2473
+    },
+    "di-c09": {
+      "status": 201,
+      "ms": 44
+    },
+    "di-c10": {
+      "status": 201,
+      "ms": 44
+    },
+    "di-c11": {
+      "status": 201,
+      "ms": 46
+    },
+    "di-c12": {
+      "status": 201,
+      "ms": 5474
+    },
+    "di-c13": {
+      "status": 201,
+      "ms": 26
+    },
+    "di-c14": {
+      "status": 201,
+      "ms": 27
+    },
+    "di-c15": {
+      "status": 201,
+      "ms": 119
+    },
+    "di-c16": {
+      "status": 201,
+      "ms": 2870
+    },
+    "di-i01": {
+      "status": 201,
+      "ms": 69
+    },
+    "di-i02": {
+      "status": 201,
+      "ms": 66
+    },
+    "di-i03": {
+      "status": 201,
+      "ms": 107
+    },
+    "di-i04": {
+      "status": 201,
+      "ms": 40
+    },
+    "di-i05": {
+      "status": 201,
+      "ms": 53
+    },
+    "di-i06": {
+      "status": 201,
+      "ms": 3074
+    },
+    "di-i07": {
+      "status": 201,
+      "ms": 2810
+    },
+    "di-i08": {
+      "status": 201,
+      "ms": 31
+    },
+    "di-i09": {
+      "status": 201,
+      "ms": 68
+    },
+    "di-i10": {
+      "status": 201,
+      "ms": 40
+    },
+    "di-i11": {
+      "status": 201,
+      "ms": 31
+    },
+    "di-i12": {
+      "status": 201,
+      "ms": 2518
+    },
+    "di-i13": {
+      "status": 201,
+      "ms": 51
+    },
+    "di-i14": {
+      "status": 201,
+      "ms": 59
+    },
+    "di-o01": {
+      "status": 201,
+      "ms": 37
+    },
+    "di-o02": {
+      "status": 201,
+      "ms": 22
+    }
+  },
+  "classification": {
+    "accuracy": 1.0,
+    "confusion": {
+      "contract": {
+        "contract": 16
+      },
+      "invoice": {
+        "invoice": 14
+      },
+      "unknown": {
+        "unknown": 2
+      }
+    }
+  },
+  "extraction": {
+    "definition": "field slots = scalar fields + ground-truth parties (+ extra predicted parties); a wrong value counts as FP and FN",
+    "groups": {
+      "all": {
+        "tp": 342,
+        "fp": 1,
+        "fn": 9,
+        "precision": 0.9971,
+        "recall": 0.9744,
+        "f1": 0.9856,
+        "slots": 360,
+        "exact_match": 0.975
+      },
+      "format:docx": {
+        "tp": 47,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9792,
+        "f1": 0.9895,
+        "slots": 48,
+        "exact_match": 0.9792
+      },
+      "format:md": {
+        "tp": 33,
+        "fp": 0,
+        "fn": 2,
+        "precision": 1.0,
+        "recall": 0.9429,
+        "f1": 0.9706,
+        "slots": 36,
+        "exact_match": 0.9444
+      },
+      "format:mixed": {
+        "tp": 12,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 12,
+        "exact_match": 1.0
+      },
+      "format:pdf": {
+        "tp": 107,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 108,
+        "exact_match": 1.0
+      },
+      "format:scan": {
+        "tp": 82,
+        "fp": 1,
+        "fn": 2,
+        "precision": 0.988,
+        "recall": 0.9762,
+        "f1": 0.982,
+        "slots": 84,
+        "exact_match": 0.9762
+      },
+      "format:txt": {
+        "tp": 25,
+        "fp": 0,
+        "fn": 4,
+        "precision": 1.0,
+        "recall": 0.8621,
+        "f1": 0.9259,
+        "slots": 36,
+        "exact_match": 0.8889
+      },
+      "format:xlsx": {
+        "tp": 36,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 36,
+        "exact_match": 1.0
+      },
+      "language:en": {
+        "tp": 220,
+        "fp": 0,
+        "fn": 2,
+        "precision": 1.0,
+        "recall": 0.991,
+        "f1": 0.9955,
+        "slots": 228,
+        "exact_match": 0.9912
+      },
+      "language:hr": {
+        "tp": 122,
+        "fp": 1,
+        "fn": 7,
+        "precision": 0.9919,
+        "recall": 0.9457,
+        "f1": 0.9683,
+        "slots": 132,
+        "exact_match": 0.947
+      },
+      "split:dev": {
+        "tp": 198,
+        "fp": 1,
+        "fn": 1,
+        "precision": 0.995,
+        "recall": 0.995,
+        "f1": 0.995,
+        "slots": 204,
+        "exact_match": 0.9951
+      },
+      "split:test": {
+        "tp": 144,
+        "fp": 0,
+        "fn": 8,
+        "precision": 1.0,
+        "recall": 0.9474,
+        "f1": 0.973,
+        "slots": 156,
+        "exact_match": 0.9487
+      },
+      "type:contract": {
+        "tp": 177,
+        "fp": 0,
+        "fn": 7,
+        "precision": 1.0,
+        "recall": 0.962,
+        "f1": 0.9806,
+        "slots": 192,
+        "exact_match": 0.9635
+      },
+      "type:invoice": {
+        "tp": 165,
+        "fp": 1,
+        "fn": 2,
+        "precision": 0.994,
+        "recall": 0.988,
+        "f1": 0.991,
+        "slots": 168,
+        "exact_match": 0.9881
+      }
+    },
+    "per_field": {
+      "contract.auto_renewal": {
+        "tp": 13,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.contract_id": {
+        "tp": 16,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.contract_type": {
+        "tp": 15,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9375,
+        "f1": 0.9677,
+        "slots": 16,
+        "exact_match": 0.9375
+      },
+      "contract.contract_value": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9333,
+        "f1": 0.9655,
+        "slots": 16,
+        "exact_match": 0.9375
+      },
+      "contract.currency": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9333,
+        "f1": 0.9655,
+        "slots": 16,
+        "exact_match": 0.9375
+      },
+      "contract.effective_date": {
+        "tp": 16,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.expiration_date": {
+        "tp": 15,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.governing_law": {
+        "tp": 16,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.notice_period": {
+        "tp": 15,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 16,
+        "exact_match": 1.0
+      },
+      "contract.parties": {
+        "tp": 29,
+        "fp": 0,
+        "fn": 3,
+        "precision": 1.0,
+        "recall": 0.9062,
+        "f1": 0.9508,
+        "slots": 32,
+        "exact_match": 0.9062
+      },
+      "contract.payment_terms": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9333,
+        "f1": 0.9655,
+        "slots": 16,
+        "exact_match": 0.9375
+      },
+      "invoice.currency": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.customer_name": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.due_date": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.iban": {
+        "tp": 13,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.invoice_date": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.invoice_number": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.payment_reference": {
+        "tp": 13,
+        "fp": 1,
+        "fn": 1,
+        "precision": 0.9286,
+        "recall": 0.9286,
+        "f1": 0.9286,
+        "slots": 14,
+        "exact_match": 0.9286
+      },
+      "invoice.subtotal": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.supplier_name": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.supplier_tax_id": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.tax_amount": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "slots": 14,
+        "exact_match": 1.0
+      },
+      "invoice.total_amount": {
+        "tp": 13,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.9286,
+        "f1": 0.963,
+        "slots": 14,
+        "exact_match": 0.9286
+      }
+    },
+    "missing_fields": {
+      "ground_truth_missing": 9,
+      "correctly_left_empty": 9,
+      "hallucinated": 0,
+      "detection_rate": 1.0
+    },
+    "fields_extracted_from_unknown_documents": 0
+  },
+  "evidence": {
+    "fields_with_value": 519,
+    "evidence_reference_valid_rate": 1.0,
+    "evidence_support_rate": 1.0,
+    "unsupported_field_rate": 0.0,
+    "page_attribution_accuracy": 0.9961,
+    "page_attribution_checked": 519,
+    "method": "exact / normalized string matching of the value inside the cited evidence (no model)"
+  },
+  "tables": {
+    "cell_association_accuracy": 1.0,
+    "cells": 135,
+    "line_item_exact_match": 1.0,
+    "rows": 27,
+    "extra_predicted_rows": 1,
+    "per_document": {
+      "di-i01": {
+        "gt_rows": 3,
+        "predicted_rows": 3,
+        "exact_rows": 3
+      },
+      "di-i02": {
+        "gt_rows": 3,
+        "predicted_rows": 3,
+        "exact_rows": 3
+      },
+      "di-i03": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i04": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i05": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i06": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i07": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i08": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i09": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i10": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i11": {
+        "gt_rows": 2,
+        "predicted_rows": 2,
+        "exact_rows": 2
+      },
+      "di-i12": {
+        "gt_rows": 1,
+        "predicted_rows": 1,
+        "exact_rows": 1
+      },
+      "di-i13": {
+        "gt_rows": 1,
+        "predicted_rows": 2,
+        "exact_rows": 1
+      },
+      "di-i14": {
+        "gt_rows": 1,
+        "predicted_rows": 1,
+        "exact_rows": 1
+      }
+    }
+  },
+  "validation": {
+    "invalid_field_detection": {
+      "tp": 4,
+      "fp": 1,
+      "fn": 0,
+      "precision": 0.8,
+      "recall": 1.0,
+      "f1": 0.8889
+    },
+    "numeric_reconciliation_accuracy": 0.9286,
+    "definition": "an invoice is reconciled correctly when its arithmetic / date / IBAN checks fail exactly when the ground truth says the document is invalid",
+    "per_document": {
+      "di-i01": {
+        "expected": [],
+        "found": []
+      },
+      "di-i02": {
+        "expected": [],
+        "found": []
+      },
+      "di-i03": {
+        "expected": [],
+        "found": []
+      },
+      "di-i04": {
+        "expected": [
+          "subtotal_mismatch"
+        ],
+        "found": [
+          "subtotal_mismatch"
+        ]
+      },
+      "di-i05": {
+        "expected": [],
+        "found": []
+      },
+      "di-i06": {
+        "expected": [],
+        "found": []
+      },
+      "di-i07": {
+        "expected": [
+          "total_mismatch"
+        ],
+        "found": [
+          "total_mismatch"
+        ]
+      },
+      "di-i08": {
+        "expected": [],
+        "found": []
+      },
+      "di-i09": {
+        "expected": [
+          "line_amount_mismatch"
+        ],
+        "found": [
+          "line_amount_mismatch"
+        ]
+      },
+      "di-i10": {
+        "expected": [],
+        "found": []
+      },
+      "di-i11": {
+        "expected": [],
+        "found": []
+      },
+      "di-i12": {
+        "expected": [
+          "due_before_invoice_date"
+        ],
+        "found": [
+          "due_before_invoice_date"
+        ]
+      },
+      "di-i13": {
+        "expected": [],
+        "found": [
+          "subtotal_mismatch"
+        ]
+      },
+      "di-i14": {
+        "expected": [],
+        "found": []
+      }
+    }
+  },
+  "ocr": {
+    "pages": [
+      {
+        "document": "di-c06",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.4,
+        "deskew_degrees": 0.5
+      },
+      {
+        "document": "di-c06",
+        "page": 2,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.7,
+        "deskew_degrees": -0.6
+      },
+      {
+        "document": "di-c07",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0058,
+        "wer": 0.02,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.6,
+        "deskew_degrees": -0.6
+      },
+      {
+        "document": "di-c08",
+        "page": 2,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.7,
+        "deskew_degrees": 0.0
+      },
+      {
+        "document": "di-c12",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 94.6,
+        "deskew_degrees": -0.7
+      },
+      {
+        "document": "di-c12",
+        "page": 2,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.8,
+        "deskew_degrees": -0.7
+      },
+      {
+        "document": "di-c16",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.3,
+        "deskew_degrees": -0.3
+      },
+      {
+        "document": "di-i06",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 95.1,
+        "deskew_degrees": 0.8
+      },
+      {
+        "document": "di-i07",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.009,
+        "wer": 0.0441,
+        "key_token_recall": 0.9167,
+        "mean_confidence": 94.1,
+        "deskew_degrees": 0.0
+      },
+      {
+        "document": "di-i12",
+        "page": 1,
+        "method": "ocr",
+        "cer": 0.0,
+        "wer": 0.0,
+        "key_token_recall": 1.0,
+        "mean_confidence": 94.7,
+        "deskew_degrees": 0.0
+      }
+    ],
+    "scanned_pages": 10,
+    "processed": 10,
+    "mean_cer": 0.0015,
+    "mean_wer": 0.0064,
+    "mean_key_token_recall": 0.9917,
+    "upload_ms_per_scanned_document_mean": 3368,
+    "note": "CER/WER on whitespace-normalized page text vs the exact text drawn on the scan; Tesseract confidence is an engine score, not a probability"
+  },
+  "queries_before_review": {
+    "queries": {
+      "q-expiring-90": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c02",
+          "di-c07",
+          "di-c14"
+        ],
+        "got": [
+          "di-c01",
+          "di-c02",
+          "di-c07",
+          "di-c14"
+        ]
+      },
+      "q-expiring-365": {
+        "tp": 8,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c02",
+          "di-c05",
+          "di-c06",
+          "di-c07",
+          "di-c11",
+          "di-c12",
+          "di-c14"
+        ],
+        "got": [
+          "di-c01",
+          "di-c02",
+          "di-c05",
+          "di-c06",
+          "di-c07",
+          "di-c11",
+          "di-c12",
+          "di-c14"
+        ]
+      },
+      "q-autorenew": {
+        "tp": 7,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c03",
+          "di-c05",
+          "di-c07",
+          "di-c08",
+          "di-c09",
+          "di-c11"
+        ],
+        "got": [
+          "di-c01",
+          "di-c03",
+          "di-c05",
+          "di-c07",
+          "di-c08",
+          "di-c09",
+          "di-c11"
+        ]
+      },
+      "q-invalid": {
+        "tp": 4,
+        "fp": 1,
+        "fn": 0,
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.8889,
+        "exact": false,
+        "expected": [
+          "di-i04",
+          "di-i07",
+          "di-i09",
+          "di-i12"
+        ],
+        "got": [
+          "di-i04",
+          "di-i07",
+          "di-i09",
+          "di-i12",
+          "di-i13"
+        ]
+      },
+      "q-conflicts": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "('same_contract_id', 'NS-SUP-2026-101', 'contract_value')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'expiration_date')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'notice_period')",
+          "('same_supplier', 'atlas logistics', 'iban')"
+        ],
+        "got": [
+          "('same_contract_id', 'NS-SUP-2026-101', 'contract_value')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'expiration_date')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'notice_period')",
+          "('same_supplier', 'atlas logistics', 'iban')"
+        ]
+      },
+      "q-oc-autorenew": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c15"
+        ],
+        "got": [
+          "di-c15"
+        ]
+      }
+    },
+    "exact_answers": 5,
+    "total": 6
+  },
+  "review": {
+    "correction_rate": 0.0242,
+    "corrected_fields": 12,
+    "field_slots": 495,
+    "approved": 26,
+    "rejected": 6,
+    "approval_consistency": 1.0,
+    "invalid_documents": 4,
+    "invalid_approvals_blocked": 4,
+    "validation_false_accept_rate": 0.0,
+    "extractions_with_errors": 5,
+    "extraction_errors_not_flagged_rate": 0.4,
+    "approvals_needing_override": 0,
+    "optimistic_lock_conflict_detected": true,
+    "policy": "reviewer corrects every field to the ground truth, approves valid documents, rejects documents whose ground truth is invalid (after checking that approval is blocked) and rejects unknown documents",
+    "details": {
+      "di-c01": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c02": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c03": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c04": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c05": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c06": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c07": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c08": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c09": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c10": {
+        "corrections": 0,
+        "status_before": "needs_review",
+        "decision": "approved"
+      },
+      "di-c11": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c12": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c13": {
+        "corrections": 4,
+        "status_before": "needs_review",
+        "decision": "approved"
+      },
+      "di-c14": {
+        "corrections": 3,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c15": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-c16": {
+        "corrections": 1,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i01": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i02": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i03": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i05": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i06": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i08": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i10": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i11": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      },
+      "di-i13": {
+        "corrections": 3,
+        "status_before": "needs_review",
+        "decision": "approved"
+      },
+      "di-i14": {
+        "corrections": 0,
+        "status_before": "pending",
+        "decision": "approved"
+      }
+    }
+  },
+  "queries_after_review": {
+    "queries": {
+      "q-expiring-90": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c02",
+          "di-c07",
+          "di-c14"
+        ],
+        "got": [
+          "di-c01",
+          "di-c02",
+          "di-c07",
+          "di-c14"
+        ]
+      },
+      "q-expiring-365": {
+        "tp": 8,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c02",
+          "di-c05",
+          "di-c06",
+          "di-c07",
+          "di-c11",
+          "di-c12",
+          "di-c14"
+        ],
+        "got": [
+          "di-c01",
+          "di-c02",
+          "di-c05",
+          "di-c06",
+          "di-c07",
+          "di-c11",
+          "di-c12",
+          "di-c14"
+        ]
+      },
+      "q-autorenew": {
+        "tp": 7,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c01",
+          "di-c03",
+          "di-c05",
+          "di-c07",
+          "di-c08",
+          "di-c09",
+          "di-c11"
+        ],
+        "got": [
+          "di-c01",
+          "di-c03",
+          "di-c05",
+          "di-c07",
+          "di-c08",
+          "di-c09",
+          "di-c11"
+        ]
+      },
+      "q-invalid": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "exact": true,
+        "expected": [],
+        "got": []
+      },
+      "q-conflicts": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "('same_contract_id', 'NS-SUP-2026-101', 'contract_value')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'expiration_date')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'notice_period')",
+          "('same_supplier', 'atlas logistics', 'iban')"
+        ],
+        "got": [
+          "('same_contract_id', 'NS-SUP-2026-101', 'contract_value')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'expiration_date')",
+          "('same_contract_id', 'NS-SUP-2026-101', 'notice_period')",
+          "('same_supplier', 'atlas logistics', 'iban')"
+        ]
+      },
+      "q-oc-autorenew": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "exact": true,
+        "expected": [
+          "di-c15"
+        ],
+        "got": [
+          "di-c15"
+        ]
+      }
+    },
+    "exact_answers": 6,
+    "total": 6
+  },
+  "security": {
+    "checks": 1946,
+    "unauthorized_extraction_access": 0,
+    "cross_tenant_leakage": 0,
+    "unauthorized_review_actions": 0,
+    "unauthorized_comparisons": 0,
+    "false_denials": 0,
+    "total_violations": 0,
+    "violations": []
+  },
+  "failures": [
+    {
+      "document": "di-c01",
+      "split": "dev",
+      "format": "pdf",
+      "language": "en",
+      "status": "pending",
+      "notes": "multi-page text PDF with a schedule table",
+      "problems": []
+    },
+    {
+      "document": "di-c02",
+      "split": "dev",
+      "format": "pdf",
+      "language": "hr",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-c03",
+      "split": "dev",
+      "format": "docx",
+      "language": "en",
+      "status": "pending",
+      "notes": "DOCX; SLA table with a vertically merged cell",
+      "problems": []
+    },
+    {
+      "document": "di-c04",
+      "split": "dev",
+      "format": "txt",
+      "language": "en",
+      "status": "pending",
+      "notes": "missing value, payment terms, notice period and renewal clause",
+      "problems": []
+    },
+    {
+      "document": "di-c05",
+      "split": "dev",
+      "format": "md",
+      "language": "hr",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-c06",
+      "split": "dev",
+      "format": "scan",
+      "language": "en",
+      "status": "pending",
+      "notes": "two scanned pages",
+      "problems": []
+    },
+    {
+      "document": "di-c07",
+      "split": "dev",
+      "format": "scan",
+      "language": "hr",
+      "status": "pending",
+      "notes": "one scanned page, Croatian diacritics",
+      "problems": []
+    },
+    {
+      "document": "di-c08",
+      "split": "dev",
+      "format": "mixed",
+      "language": "en",
+      "status": "pending",
+      "notes": "mixed PDF: page 1 text layer, page 2 scanned",
+      "problems": []
+    },
+    {
+      "document": "di-c09",
+      "split": "dev",
+      "format": "pdf",
+      "language": "en",
+      "status": "pending",
+      "notes": "same contract ID as di-c01 with different end date, value and notice: a cross-document conflict",
+      "problems": []
+    },
+    {
+      "document": "di-c10",
+      "split": "test",
+      "format": "pdf",
+      "language": "en",
+      "status": "needs_review",
+      "notes": "ambiguous: a second, different 'End date' line in the final provisions",
+      "problems": []
+    },
+    {
+      "document": "di-c11",
+      "split": "test",
+      "format": "docx",
+      "language": "hr",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-c12",
+      "split": "test",
+      "format": "scan",
+      "language": "en",
+      "status": "pending",
+      "notes": "scanned; payment terms and notice only in sentences",
+      "problems": []
+    },
+    {
+      "document": "di-c13",
+      "split": "test",
+      "format": "txt",
+      "language": "hr",
+      "status": "needs_review",
+      "notes": "indefinite lease: no expiration date; novel labels (Najmoprimac / Najmodavac / Mjesečna najamnina)",
+      "problems": [
+        "contract_value: predicted None, expected '3600.00'",
+        "currency: predicted None, expected 'EUR'",
+        "parties: predicted None, expected 'Northstar Manufacturing d.o.o.'",
+        "parties: predicted None, expected 'Gradski Centar Nekretnine d.o.o.'"
+      ]
+    },
+    {
+      "document": "di-c14",
+      "split": "test",
+      "format": "md",
+      "language": "en",
+      "status": "pending",
+      "notes": "novel label 'Payment'",
+      "problems": [
+        "payment_terms: predicted None, expected 'P30D'",
+        "parties: predicted None, expected 'Meridian Advisory LLP'"
+      ]
+    },
+    {
+      "document": "di-c15",
+      "split": "test",
+      "format": "pdf",
+      "language": "en",
+      "status": "pending",
+      "notes": "other tenant",
+      "problems": []
+    },
+    {
+      "document": "di-c16",
+      "split": "test",
+      "format": "scan",
+      "language": "hr",
+      "status": "pending",
+      "notes": "other tenant, scanned",
+      "problems": [
+        "contract_type: predicted None, expected 'services'"
+      ]
+    },
+    {
+      "document": "di-i01",
+      "split": "dev",
+      "format": "pdf",
+      "language": "en",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-i02",
+      "split": "dev",
+      "format": "pdf",
+      "language": "hr",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-i03",
+      "split": "dev",
+      "format": "xlsx",
+      "language": "en",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-i04",
+      "split": "dev",
+      "format": "xlsx",
+      "language": "hr",
+      "status": "needs_review",
+      "notes": "invalid: subtotal does not equal the sum of the lines (total = printed subtotal + VAT)",
+      "problems": []
+    },
+    {
+      "document": "di-i05",
+      "split": "dev",
+      "format": "docx",
+      "language": "en",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-i06",
+      "split": "dev",
+      "format": "scan",
+      "language": "en",
+      "status": "pending",
+      "notes": "",
+      "problems": []
+    },
+    {
+      "document": "di-i07",
+      "split": "dev",
+      "format": "scan",
+      "language": "hr",
+      "status": "needs_review",
+      "notes": "scanned; invalid total",
+      "problems": [
+        "payment_reference: predicted 'HROO 2026-911', expected 'HR00 2026-911'"
+      ]
+    },
+    {
+      "document": "di-i08",
+      "split": "dev",
+      "format": "txt",
+      "language": "en",
+      "status": "pending",
+      "notes": "plain text with aligned columns; 0% VAT",
+      "problems": []
+    },
+    {
+      "document": "di-i09",
+      "split": "test",
+      "format": "pdf",
+      "language": "en",
+      "status": "needs_review",
+      "notes": "invalid line amount (12 x 18.75 printed as 250.00); subtotal/total consistent with printed lines",
+      "problems": []
+    },
+    {
+      "document": "di-i10",
+      "split": "test",
+      "format": "xlsx",
+      "language": "en",
+      "status": "pending",
+      "notes": "same supplier as di-i01 with a DIFFERENT IBAN: conflicting supplier information",
+      "problems": []
+    },
+    {
+      "document": "di-i11",
+      "split": "test",
+      "format": "md",
+      "language": "hr",
+      "status": "pending",
+      "notes": "no IBAN printed (missing field)",
+      "problems": []
+    },
+    {
+      "document": "di-i12",
+      "split": "test",
+      "format": "scan",
+      "language": "en",
+      "status": "needs_review",
+      "notes": "scanned; due date before the invoice date",
+      "problems": []
+    },
+    {
+      "document": "di-i13",
+      "split": "test",
+      "format": "docx",
+      "language": "hr",
+      "status": "needs_review",
+      "notes": "novel total label 'Iznos za uplatu'",
+      "problems": [
+        "total_amount: predicted None, expected '4500.00'"
+      ]
+    },
+    {
+      "document": "di-i14",
+      "split": "test",
+      "format": "pdf",
+      "language": "en",
+      "status": "pending",
+      "notes": "other tenant",
+      "problems": []
+    },
+    {
+      "document": "di-o01",
+      "split": "dev",
+      "format": "pdf",
+      "language": "en",
+      "status": "needs_review",
+      "notes": "meeting minutes: neither a contract nor an invoice",
+      "problems": []
+    },
+    {
+      "document": "di-o02",
+      "split": "test",
+      "format": "txt",
+      "language": "hr",
+      "status": "needs_review",
+      "notes": "internal policy: unknown type",
+      "problems": []
+    }
+  ],
+  "llm_provider": {
+    "evaluated": false,
+    "status": "NOT VERIFIED",
+    "reason": "no OPENAI_API_KEY; the provider contract is covered by mocked tests"
+  }
+}

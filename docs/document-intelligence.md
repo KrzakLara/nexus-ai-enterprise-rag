@@ -71,7 +71,7 @@ Every field is an `ExtractedField` with:
 
 | Contract | Invoice | Line item |
 |---|---|---|
-| contract_id, contract_type (supply / services / license / nda / lease / framework / amendment), parties[i], effective_date, expiration_date, contract_value, currency, payment_terms, notice_period, auto_renewal, renewal_conditions, termination_conditions, governing_law, obligations[i] | invoice_number, supplier_name, supplier_tax_id, customer_name, invoice_date, due_date, currency, line_items, subtotal, tax_amount, total_amount, payment_reference, iban | description, quantity, unit_price, tax_rate, amount |
+| contract_id, contract_type (supply / services / license / nda / lease / framework / amendment), parties[i], effective_date, expiration_date, contract_value, **value_period** (annual / total / monthly), currency, payment_terms, notice_period, auto_renewal, renewal_conditions, termination_conditions, governing_law, obligations[i] | invoice_number, supplier_name, supplier_tax_id, customer_name, invoice_date, due_date, currency, line_items, subtotal, tax_amount, total_amount, payment_reference, iban | description, quantity, unit_price, tax_rate, amount |
 
 **Canonical value formats:**
 - dates: ISO `YYYY-MM-DD`;
@@ -79,6 +79,10 @@ Every field is an `ExtractedField` with:
 - durations: ISO 8601 (`P90D`, `P3M`);
 - currency: an ISO 4217 code;
 - IBAN: compact form.
+
+**Field semantics** (dataset v1.1, see `eval/docintel/ERRATA.md`):
+- `contract_value` is the principal amount the contract states, and **`value_period`** says what it covers (`annual`, `total` or `monthly`), taken from its printed label (*Annual value* → annual, *Contract value* / *Vrijednost ugovora* → total). Comparisons never rank amounts with different or unknown periods. A total is never derived from a monthly amount.
+- `governing_law` is the **short English name of the jurisdiction**: *Republic of Croatia*, *Republike Hrvatske* and *Hrvatske* → `Croatia`. The document's wording stays in `raw` and in the evidence, so equivalent names never show up as a difference.
 
 **European input** is normalized deterministically:
 - numbers like `1.234,56` and `184,000`;

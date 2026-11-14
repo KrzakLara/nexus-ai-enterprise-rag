@@ -102,7 +102,10 @@ FieldSpec = tuple[str, str, bool]   # (name, value_type, required)
 CONTRACT_FIELDS: list[FieldSpec] = [
     ("contract_id", "text", True), ("contract_type", "text", False), ("parties", "text_list", True),
     ("effective_date", "date", True), ("expiration_date", "date", False),
-    ("contract_value", "money", False), ("currency", "currency", False),
+    # contract_value is the principal amount the contract states; value_period says what it covers
+    # ('annual' | 'total' | 'monthly'), taken from the printed label. Amounts with different
+    # periods are never compared as if they were the same quantity.
+    ("contract_value", "money", False), ("value_period", "text", False), ("currency", "currency", False),
     ("payment_terms", "duration", False), ("notice_period", "duration", False),
     ("auto_renewal", "bool", False), ("renewal_conditions", "text", False),
     ("termination_conditions", "text", False), ("governing_law", "text", False),
@@ -169,6 +172,7 @@ class ContractExtraction(BaseModel):
     effective_date: ExtractedField
     expiration_date: ExtractedField
     contract_value: ExtractedField
+    value_period: ExtractedField
     currency: ExtractedField
     payment_terms: ExtractedField
     notice_period: ExtractedField

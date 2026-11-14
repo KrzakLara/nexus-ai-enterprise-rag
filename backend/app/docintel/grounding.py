@@ -20,7 +20,13 @@ import re
 from decimal import Decimal
 
 from . import normalize as nz
-from .rules import CONTRACT_TYPES, JURISDICTION_CANONICAL, RENEWAL_NEGATIVE, RENEWAL_POSITIVE
+from .rules import (CONTRACT_TYPES, JURISDICTION_CANONICAL, RENEWAL_NEGATIVE, RENEWAL_POSITIVE,
+                    VALUE_PERIOD_OF_LABEL)
+
+
+PERIOD_WORDS = {"annual": ("annual", "yearly", "per year", "godišnj"),
+                "monthly": ("monthly", "per month", "mjesečn"),
+                "total": ("total", "ukupn", "contract value", "vrijednost ugovora")}
 
 
 def derived_support(name: str, value: str, text: str) -> str | None:
@@ -30,6 +36,9 @@ def derived_support(name: str, value: str, text: str) -> str | None:
     low = ws(text)
     if name == "contract_type":
         words = dict(CONTRACT_TYPES).get(value, ())
+        return "normalized" if any(w in low for w in words) else None
+    if name == "value_period":
+        words = [k for k, v in VALUE_PERIOD_OF_LABEL.items() if v == value] + list(PERIOD_WORDS.get(value, ()))
         return "normalized" if any(w in low for w in words) else None
     if name == "governing_law":
         aliases = [k for k, v in JURISDICTION_CANONICAL.items() if v == value]
