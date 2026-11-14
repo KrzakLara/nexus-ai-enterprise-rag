@@ -20,13 +20,18 @@ from sqlalchemy.orm import Session
 from .auth import current_user, make_token, verify_password
 from .config import settings
 from .database import engine, get_db
+from .docintel.ocr import ocr_available
 from .embeddings import Embedder, EmbeddingError, get_embedder
 from .evidence import EvidencePolicy, assess
 from .extractive import select_evidence
 from .indexing import embed_pending_chunks
 from .migrate import assert_schema_current
 from .models import AuditEvent, Chunk, Document, DocumentGrant, User
-from .parsers import extract_contract_fields, extract_pages, split_page
+from .docintel import service as docintel
+from .docintel.parsing import UnsupportedFormat, parse_document
+from .docintel_api import router as docintel_router
+from .docintel_api import summary as intelligence_summary
+from .parsers import extract_contract_fields, split_page
 from .rag import answer
 from .retrieval import RetrievalMode, RetrievalUnavailable, retrieve
 from .security import audit, authorized_documents, permitted_document
@@ -64,11 +69,12 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+app.include_router(docintel_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -130,6 +136,8 @@ def health():
         "default_retrieval_mode": default_retrieval_mode(engine.dialect.name),
         "embedding_model": settings.embedding_model,
         "embedding_model_loaded": get_embedder().is_loaded,
+        "ocr_available": ocr_available(),
+        "document_formats": ["pdf", "pdf (scanned, OCR)", "docx", "xlsx", "txt", "md"],
     }
 
 
@@ -169,6 +177,7 @@ def documents(user: User = Depends(current_user), db: Session = Depends(get_db))
             "groups": db.scalars(
                 select(DocumentGrant.group_name).where(DocumentGrant.document_id == d.id)
             ).all(),
+            "intelligence": intelligence_summary(db, d),
         }
         for d in rows
     ]
@@ -227,8 +236,8 @@ def upload(
 ):
     filename = Path(file.filename or "").name
     extension = Path(filename).suffix.lower()
-    if extension not in {".pdf", ".docx", ".txt", ".md"}:
-        raise HTTPException(415, "Supported: PDF with a text layer, DOCX, TXT, MD")
+    if extension not in {".pdf", ".docx", ".xlsx", ".txt", ".md"}:
+        raise HTTPException(415, "Supported: PDF (text layer or scanned), DOCX, XLSX, TXT, MD")
     allowed_groups = list(dict.fromkeys(g.strip() for g in groups.split(",") if g.strip()))
     if not allowed_groups or len(allowed_groups) > 5 or any(len(g) > 60 for g in allowed_groups):
         raise HTTPException(400, "Provide 1 to 5 valid groups")
@@ -240,9 +249,14 @@ def upload(
     if len(contents) > settings.max_upload_bytes:
         raise HTTPException(413, f"Upload exceeds {settings.max_upload_bytes // (1024 * 1024)} MB")
     try:
-        pages = extract_pages(filename, contents)
+        # Layout-aware parse (OCR for pages without a text layer). The page texts feed the existing
+        # chunker unchanged, so RAG chunks, page numbers and citations keep their meaning.
+        parsed = parse_document(filename, contents)
+    except UnsupportedFormat as exc:
+        raise HTTPException(415, str(exc)) from None
     except Exception as exc:
         raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
+    pages = parsed.page_texts()
     doc_id = str(uuid4())
     storage_key = f"{doc_id}{extension}"
     file_path = settings.storage_dir / storage_key
@@ -294,12 +308,23 @@ def upload(
         except EmbeddingError as exc:
             db.rollback()
             embedding_status = f"failed: {str(exc)[:160]}"
+    # Document intelligence (structure + offline rules extraction). A failure here never undoes
+    # the upload: it is recorded as processing status 'failed' and can be retried via /process.
+    try:
+        docintel.store_structure(db, doc, parsed)
+        docintel.process(db, user, doc)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        docintel.mark_failed(db, doc, parsed, exc)
+        db.commit()
     return {
         "id": doc_id,
         "title": doc.title,
         "pages": doc.page_count,
         "fields_extracted": len(doc.extracted_fields),
         "embedding_status": embedding_status,
+        "processing": intelligence_summary(db, doc),
     }
 
 
