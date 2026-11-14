@@ -66,7 +66,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="NEXUS AI — Enterprise Knowledge Intelligence",
     description="Secure-by-query RAG baseline with verifiable document evidence (LOCAL DEMO ONLY)",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 app.include_router(docintel_router)

@@ -8,7 +8,7 @@
 
 `Applied AI` · `FastAPI` · `React + TypeScript` · `SQLAlchemy + Alembic` · `PostgreSQL FTS + pgvector` · `SentenceTransformers` · `Docker` · `pytest`
 
-**Status:** v0.2.0 (Phases 1–2 complete: MVP + advanced hybrid RAG). Four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector semantic, hybrid RRF), query-aware verbatim answers, a dev-calibrated evidence-sufficiency (abstention) policy, and a reproducible evaluation over 100 labeled questions with zero measured authorization violations. This is a local demo and is not production-ready.
+**Status:** v0.3.0 release candidate (Phases 1–3: MVP, advanced hybrid RAG, document intelligence). Four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector semantic, hybrid RRF) with query-aware verbatim answers and a dev-calibrated abstention policy, evaluated on 100 labeled questions. Document intelligence covers layout-aware parsing and OCR (PDF, scans, DOCX, XLSX, TXT, MD), contract and invoice extraction with verbatim evidence, validation, human review and multi-document comparison, evaluated on a frozen 32-document corpus. Zero measured authorization violations. This is a local demo and is not production-ready. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 </div>
 
@@ -62,9 +62,9 @@ Authorization violations: 0 (retrieval candidates, API sources, citations, LLM p
 Full results: [docs/benchmark-results.md](docs/benchmark-results.md).
 <!-- BENCHMARK:END -->
 
-## Document intelligence (Phase 3, in development)
+## Document intelligence (Phase 3)
 
-> Branch `feat/phase3-document-intelligence`; not released. Details: [docs/document-intelligence.md](docs/document-intelligence.md) · [human review](docs/human-review.md) · [evaluation method](docs/extraction-evaluation.md) · [generated results](docs/extraction-evaluation-results.md) · [case study](docs/phase3-case-study.md).
+> Part of v0.3.0 (release candidate). Release notes: [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md). Details: [docs/document-intelligence.md](docs/document-intelligence.md) · [human review](docs/human-review.md) · [evaluation method](docs/extraction-evaluation.md) · [generated results](docs/extraction-evaluation-results.md) · [case study](docs/phase3-case-study.md).
 
 Upload a contract or an invoice (text PDF, **scanned PDF**, DOCX, **XLSX**, TXT, Markdown). NEXUS then:
 1. parses it into pages, headings, paragraphs and tables, using Tesseract OCR with deskew and table-lattice rebuild for scans;
@@ -385,9 +385,13 @@ docs/                         architecture.md, evaluation.md, security.md, demo.
 - [x] **v0.2d, quality:** query-aware verbatim extractive answers (answer fact recall 0.333 → 0.590 on test), sentence-level evidence policy (dev-calibrated, trade-off documented), embedder comparison (e5-small kept), query-translation experiment (not adopted), hard-wrapped sentence joining, mandatory answer-quality CI gate, scripted demo scenarios.
 - [x] **v0.2.0, release:** PDF/DOCX parser and upload tests, a complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid as the PostgreSQL default mode, and a reproducible evaluation re-run. See [CHANGELOG.md](CHANGELOG.md).
 - [ ] **Deferred from v0.2d:** a gated translated-query branch (the ungated one was measured and not adopted), LLM answer evaluation with the same deterministic checks, smaller-chunk ablation.
-- [x] **v0.3 (Phase 3, branch `feat/phase3-document-intelligence`, not released yet), document intelligence:** layout-aware parsing (PDF, scans, DOCX, XLSX, TXT, MD), Tesseract OCR with deskew and table lattice, contract and invoice schemas with verbatim evidence, grounding, validation, human review, multi-document comparison, 32-document evaluation with CI gates. Not done: layout-aware *chunking*, Docling, live LLM extraction evaluation.
+- [x] **v0.3.0 (Phase 3, release candidate), document intelligence:** layout-aware parsing (PDF, scans, DOCX, XLSX, TXT, MD), Tesseract OCR with deskew and table lattice, contract and invoice schemas with verbatim evidence, grounding, validation, human review, multi-document comparison, 32-document evaluation with CI gates. Not done: layout-aware *chunking*, Docling, live LLM extraction evaluation.
 - [ ] **v0.4, enterprise hardening:** OIDC, Postgres RLS, ANN index with filtered-recall benchmarks, reranking of authorized candidates, workers, prompt-injection regression tests.
 
 ---
+
+## License
+
+NEXUS AI's own code is released under the [MIT License](LICENSE), Copyright (c) 2026 Lara Krzak. Third-party components, the fonts embedded in the evaluation PDFs, the embedding model and the Docker image contents stay under their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); MIT does not relicense them.
 
 **Safety note:** All sample companies, customers and document contents are fictional. This local demo has **not** been audited for regulatory compliance. Do not deploy it publicly or use it with real confidential material.
