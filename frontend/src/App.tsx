@@ -4,11 +4,12 @@ import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronDown, ChevronRight,
   CircleAlert, CircleCheck, Clock3, CloudUpload, Database, FileLock2, FileSearch,
   FileText, Fingerprint, LockKeyhole, LogOut, MessageSquareText, Plus,
-  Search, Send, Settings2, Shield, ShieldCheck, Sparkles, X,
+  ScanText, Search, Send, Settings2, Shield, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
+import { DocIntelWorkspace } from './DocIntel';
 import { api, ANSWER_MODE_LABELS, RETRIEVAL_LABELS, type Answer, type AuditEvent, type Document, type DocumentDetail, type EvaluationSummary, type RetrievalMode, type Source, type UploadResult, type User } from './api';
 
-type Section = 'assistant' | 'documents' | 'governance' | 'evaluation';
+type Section = 'assistant' | 'documents' | 'intelligence' | 'governance' | 'evaluation';
 type Message = { id: number; question: string; result?: Answer; error?: string };
 
 const DEMO_USERS = [
@@ -17,6 +18,8 @@ const DEMO_USERS = [
   { email: 'hr@northstar.demo', title: 'HR specialist', subtitle: 'HR only', initials: 'HR', color: 'orange' },
   { email: 'sales@northstar.demo', title: 'Sales associate', subtitle: 'Sales + Legal', initials: 'SA', color: 'teal' },
   { email: 'finance@otherco.demo', title: 'External tenant', subtitle: 'Otherco · Finance only', initials: 'OC', color: 'rose' },
+  { email: 'reviewer@northstar.demo', title: 'Document reviewer', subtitle: 'Reviews extractions · Procurement + Finance', initials: 'RV', color: 'teal' },
+  { email: 'procurement@northstar.demo', title: 'Procurement analyst', subtitle: 'Procurement · read-only extractions', initials: 'PR', color: 'orange' },
 ];
 // Guided demo (finance persona): each prompt runs in the retrieval mode it demonstrates.
 const QUICK_PROMPTS: { label: string; question: string; mode: RetrievalMode }[] = [
@@ -49,7 +52,7 @@ function Login({ onSuccess }: { onSuccess: (token: string, user: User) => void }
   }
   return <div className="login-page">
     <div className="login-art">
-      <div className="login-top"><Logo /><span className="demo-label">PORTFOLIO PROJECT · V0.2-DEV</span></div>
+      <div className="login-top"><Logo /><span className="demo-label">PORTFOLIO PROJECT · V0.2.0 + PHASE 3 PREVIEW</span></div>
       <div className="login-center">
         <span className="eyebrow muted-on-dark"><span className="small-pulse" /> AI-POWERED ENTERPRISE SEARCH</span>
         <h1>Knowledge you can <em>trust.</em></h1>
@@ -206,6 +209,7 @@ function App() {
       <nav className="nav-list" aria-label="Main navigation">
         <button onClick={() => setSection('assistant')} className={`nav-link ${section === 'assistant' ? 'active' : ''}`}><MessageSquareText size={18} /> AI Assistant <span className="nav-beta">AI</span></button>
         <button onClick={() => setSection('documents')} className={`nav-link ${section === 'documents' ? 'active' : ''}`}><BookOpen size={18} /> Document Library <span className="nav-count">{docs.length}</span></button>
+        <button onClick={() => setSection('intelligence')} className={`nav-link ${section === 'intelligence' ? 'active' : ''}`}><ScanText size={18} /> Document Intelligence</button>
         <button onClick={() => void showAudits()} className={`nav-link ${section === 'governance' ? 'active' : ''}`}><ShieldCheck size={18} /> Access & Audit</button>
         <button onClick={() => void showEvaluation()} className={`nav-link ${section === 'evaluation' ? 'active' : ''}`}><Activity size={18} /> Evaluation</button>
       </nav>
@@ -218,7 +222,7 @@ function App() {
       </div>
     </aside>
     <main className="main-pane">
-      <header className="topbar"><div className="breadcrumbs">Northstar / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : 'Access & Audit'}</strong></div>
+      <header className="topbar"><div className="breadcrumbs">Northstar / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
         <div className="topbar-right"><span className="environment"><span className="small-pulse" />Demo environment</span><span className="topbar-separator" /><span className={`avatar tiny ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span></div></header>
       {section === 'assistant' && <div className="assistant-layout">
         <div className="assistant-main">
@@ -259,6 +263,7 @@ function App() {
         <div className="roadmap-note"><CircleAlert size={18} /><span><strong>Local demo, not production-ready.</strong> Implemented in v0.2.0: permission-scoped BM25, PostgreSQL full-text, pgvector and hybrid RRF retrieval, a 100-question labeled evaluation and a calibrated evidence-sufficiency policy. <strong>Not implemented yet:</strong> OCR and layout/table extraction, schema-based field extraction, reranking, ANN indexes, production OIDC SSO, PostgreSQL row-level security, background workers, object storage and an external security review.</span></div>
       </div>}
       {section === 'evaluation' && <EvaluationView data={evaluation} error={evaluationError} />}
+      {section === 'intelligence' && <DocIntelWorkspace token={token} user={user} />}
     </main>
     {notice && <div className="toast"><CircleAlert size={17} />{notice}<button title="Close" onClick={() => setNotice('')}><X size={17} /></button></div>}
     {openDoc && <div className="overlay" role="presentation" onClick={() => setOpenDoc(null)}><div className="detail-drawer" role="dialog" aria-modal="true" aria-label="Document details" onClick={event => event.stopPropagation()}><div className="drawer-header"><div className="eyebrow">DOCUMENT INSPECTOR</div><button title="Close document" onClick={() => setOpenDoc(null)}><X size={20} /></button></div><div className="drawer-content"><div className="document-hero"><div className="large-file-icon"><FileText size={27} /></div><h2>{openDoc.title}</h2><p>{openDoc.filename}</p><span className="mini-badge"><LockKeyhole size={13} /> Authorized view</span></div><div className="drawer-action"><button className="button secondary full" onClick={() => void downloadDoc(openDoc)}><ArrowDownToLine size={17} /> Download original</button></div><div className="drawer-section"><div className="drawer-section-heading"><h3>Extracted fields</h3><span className="small-counter">{Object.keys(openDoc.fields ?? {}).length}</span></div>{Object.entries(openDoc.fields ?? {}).length === 0 ? <p className="muted-small">No structured contract fields found by the regex baseline.</p> : Object.entries(openDoc.fields).map(([key, field]) => <div className="extracted-field" key={key}><span className="extract-key">{key.replaceAll('_', ' ')}</span><strong>{field.value}</strong><small>Page {field.page} · <FieldStatus status={field.status} /></small><p>{field.evidence}</p></div>)}</div><div className="drawer-section"><div className="drawer-section-heading"><h3>Source text</h3><span className="small-counter">{openDoc.page_count} p.</span></div>{openDoc.pages.map((page, index) => <div className="document-page" key={index}><span>PAGE {page.page}</span><p>{page.content}</p></div>)}</div></div></div></div>}
