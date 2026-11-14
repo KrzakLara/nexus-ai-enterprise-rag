@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-**Current release:** v0.2.0 (Phases 1–2: MVP and advanced hybrid RAG). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
+**Current release:** v0.2.0 (Phases 1–2: MVP and advanced hybrid RAG). **In development on `feat/phase3-document-intelligence`:** Phase 3 document intelligence (layout-aware parsing, OCR, structured extraction, validation, human review, multi-document analysis); see ADR-013. This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
 
 ## Context and goals
 
@@ -197,6 +197,18 @@ Planned production auth: OIDC Authorization Code + PKCE; validate issuer, audien
 | Spoofed identity on public network | Docker loopback binding; refuses non-demo mode | Replace auth entirely for real deployment |
 | Decompression bombs / hostile Office or PDF | Basic size/page caps | Not sandboxed; parser isolation/scanning planned |
 
+## ADR-013: Document intelligence as modules of the same monolith (Phase 3)
+
+Parsing, OCR, extraction, validation, review and comparison live in `backend/app/docintel/` and in one router (`docintel_api.py`). They share the database, the ACL (`authorized_documents`), the audit trail and the deployment with the RAG. There are no new services, queues or vector stores. Full description: [document-intelligence.md](document-intelligence.md), [human-review.md](human-review.md).
+
+- **One normalized structure** (`structure.py`) for every format. Page texts derived from it feed the unchanged Phase 2 chunker, so retrieval, chunk page numbers and citations keep working. For text-layer PDFs the page text is byte-identical to the v0.2 parser's, which a test checks.
+- **Lightweight parsing stack** (pdfplumber, pypdfium2, Tesseract, python-docx, openpyxl) instead of Docling. Docling resolved to 110 extra packages plus model downloads; the parser interface keeps it swappable.
+- **OCR with explicit pre-processing:** deskew, ruling-line removal and a lattice table rebuild. On the scanned test invoice, OCR on the raw raster destroyed the table (CER 0.27, key tokens 0.57); with pre-processing the evaluation measures the values in [extraction-evaluation-results.md](extraction-evaluation-results.md).
+- **Deterministic offline extraction by default.** An optional LLM provider is constrained by a strict JSON schema and verbatim evidence, and is never a silent fallback.
+- **Evidence and validation before trust:** grounding (exact / normalized string matching, no probabilities) and Decimal business rules produce field-level issues. Nothing is auto-corrected.
+- **Human review** with optimistic locking, an append-only history and corrections stored next to the original values.
+- **New tables only** (Alembic `0004_document_intelligence`): `document_processing`, `document_tables`, `extractions`, `extraction_fields`, `review_events`. Phase 1/2 tables and IDs are unchanged.
+
 ## Target production architecture (planned; not current)
 
 ```mermaid
@@ -227,7 +239,7 @@ flowchart TD
 1. **v0.2c (done):** 100-question chunk-level evaluation, four-mode benchmark with CIs, RRF ablation, calibrated evidence-sufficiency policy, citation and security evaluation, CI gates, evaluation UI.
 1. **v0.2d (done):** query-aware extractive answers, sentence-level evidence policy, embedder comparison (e5-small kept). Deferred: query translation / expansion, LLM answer evaluation, chunk-size ablation.
 1. **v0.2.0 (release):** PDF/DOCX and upload tests, complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid default on PostgreSQL.
-2. **v0.3 — document AI:** Docling/OCR, table extraction, layout-aware chunking, Pydantic schema extraction, confidence + human review.
+2. **v0.3 — document AI (implemented on the Phase 3 branch, not released):** layout-aware parsing, Tesseract OCR with deskew + table lattice, Pydantic schema extraction (rules + optional LLM), grounding, validation, human review, multi-document comparison, a 32-document evaluation with CI gates. Not done: layout-aware chunking (chunks still come from page text), Docling.
 3. **v0.4 — governance:** OIDC, Postgres RLS, signed document links, async jobs, per-tenant observability, source deletion and permission-change reindexing.
 4. **v1.0 — engineering evidence:** retrieval and answer eval suite, injection tests, load benchmarks, latency/cost dashboards, threat model and demo video.
 

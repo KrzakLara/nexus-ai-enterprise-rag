@@ -62,6 +62,35 @@ Authorization violations: 0 (retrieval candidates, API sources, citations, LLM p
 Full results: [docs/benchmark-results.md](docs/benchmark-results.md).
 <!-- BENCHMARK:END -->
 
+## Document intelligence (Phase 3, in development)
+
+> Branch `feat/phase3-document-intelligence`; not released. Details: [docs/document-intelligence.md](docs/document-intelligence.md) · [human review](docs/human-review.md) · [evaluation method](docs/extraction-evaluation.md) · [generated results](docs/extraction-evaluation-results.md) · [case study](docs/phase3-case-study.md).
+
+Upload a contract or an invoice (text PDF, **scanned PDF**, DOCX, **XLSX**, TXT, Markdown). NEXUS then:
+1. parses it into pages, headings, paragraphs and tables, using Tesseract OCR with deskew and table-lattice rebuild for scans;
+2. classifies it as contract, invoice or unknown;
+3. extracts schema fields, each with the **verbatim evidence** (page, line or table cell, bbox when available);
+4. checks that the evidence supports each value;
+5. validates dates, currencies and invoice arithmetic with Decimal, without auto-correcting anything;
+6. queues it for **human review**: corrections next to the original values, approve / reject, optimistic locking and an audit history.
+
+**Multi-document queries** answer questions such as *"Which contracts expire within 90 days?"*, *"Which invoices fail validation?"* and *"Which documents conflict?"* (same contract ID with different terms; same supplier with a different IBAN). They use deterministic logic over authorized, evidence-backed fields.
+
+Measured on a frozen 32-document corpus (16 contracts, 14 invoices, 2 other; 7 scanned and 1 mixed PDF; EN + HR; 2 tenants), offline rules provider, `eval/docintel/reports/latest.json` (2026-11-14):
+
+| Metric | Result |
+|---|---|
+| Field F1 (all / dev / **test**) | 0.986 / 0.995 / **0.973** (exact match 0.975, 360 field slots) |
+| Invented values for absent fields | 0 of 9 |
+| Evidence supports the value / on the right page | 100 % / 99.6 % (519 values) |
+| Line-item cells / rows | 135/135 / 27/27 |
+| OCR on 10 scanned pages (CER / key-token recall) | 0.0015 / 0.992 |
+| Invalid invoices blocked from approval / validation false accepts | 4/4 / 0 |
+| Multi-document questions exact (after review) | 6/6 |
+| Security matrix (1,946 requests, 7 personas × 32 documents) | **0 violations** |
+
+Every miss is a deliberately **novel label** on a test document, or an OCR `0`/`O` confusion. The misses were reported, not patched. The corpus is synthetic and authored by the same team as the rules, so these numbers are optimistic. Live LLM extraction is **not verified** (the optional provider is tested with a fake client only).
+
 ## Retrieval modes
 
 | `mode` | Strategy | Score returned | Works on |
@@ -121,7 +150,7 @@ The exact identifier appears only in the Cygnus agreement. The keyword branch fi
 
 `python scripts/demo_scenarios.py` logs in as the seeded personas, calls the live API (`docker compose up`) and checks each behaviour. It exits with code 1 if any scenario regresses. Last run on 2026-11-14 against the v0.2.0 Docker stack: 9 PASS, 1 KNOWN. The KNOWN item, 2b, is a documented false abstention of the dev-calibrated policy, accepted for v0.2.0.
 
-The demo scenarios only read. `python scripts/docker_smoke.py` also checks the write path in Docker against a **disposable** API instance (setup in its docstring): PDF upload → embeddings → default-mode hybrid answer cited on the right page → document view → byte-identical download → denial for another group and tenant → audit trail. It also checks that `/api/health` stays responsive during a large upload. Last run on 2026-11-14: 20/20 passed (a 34 s upload with 498 embeddings; maximum health latency 69 ms). Walk-through: [docs/demo.md](docs/demo.md).
+The demo scenarios only read. `python scripts/docker_smoke.py` also checks the write path in Docker against a **disposable** API instance (setup in its docstring): PDF upload → embeddings → default-mode hybrid answer cited on the right page → document view → byte-identical download → denial for another group and tenant → audit trail. It also checks that `/api/health` stays responsive during a large upload. Phase 3 checks follow: a scanned invoice is OCRed, flagged and blocked from approval, an XLSX invoice is approved, and review and compare respect the ACL. Last run on 2026-11-14 (Phase 3 image): 27/27 passed (a 39 s upload with 498 embeddings; maximum health latency 35 ms). Walk-through: [docs/demo.md](docs/demo.md).
 
 | # | Scenario | Persona · mode | Observed |
 |---|---|---|---|
@@ -273,7 +302,9 @@ uv sync --locked --extra dev --extra mt   # optional: local MarianMT for the tra
 EVAL_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_mt_eval \
   python scripts/experiment_query_translation.py   # dev only; --split test --variants <name> once, per its rule
 python scripts/demo_scenarios.py      # the 8 demo scenarios against the running Docker stack
-python scripts/docker_smoke.py        # 20 write-path checks against a DISPOSABLE API instance (see its docstring)
+python scripts/docker_smoke.py        # 27 write-path checks (Phases 1-3) against a DISPOSABLE API instance (see its docstring)
+python scripts/build_docintel_dataset.py --check   # Phase 3 frozen corpus unchanged
+python scripts/evaluate_docintel.py --database-url ...nexus_docintel_eval   # Phase 3 evaluation (needs Tesseract)
 python scripts/build_eval_dataset.py  # rebuild + validate labels after editing eval/questions.jsonl
 python scripts/evaluate_retrieval.py  # legacy v0.1 BM25 smoke set on the demo database (8 examples)
 ```
@@ -316,13 +347,23 @@ backend/app/
   extractive.py  query-aware verbatim sentence selection for offline answers
   migrate.py     Alembic runner, v0.1 upgrade detection, autogenerate filter
   models.py, rag.py, parsers.py, auth.py, config.py, database.py
-backend/evaluation/  corpus + ACL oracle, dataset builder/validator, IR metrics, runner, report renderer
+  docintel_api.py  Phase 3 HTTP API (processing, extraction, review, comparison)
+  docintel/      Phase 3: parsing, ocr, ocr_tables, tables, structure, normalize, classify, schemas,
+                 rules, llm, grounding, validation, service, review, compare
+backend/evaluation/  corpus + ACL oracle, dataset builder/validator, IR metrics, runner, report renderer;
+                     docgen.py, docintel_corpus.py, docintel_metrics.py, docintel_eval.py, docintel_report.py (Phase 3)
+eval/docintel/       Phase 3 frozen corpus (32 documents), labels.jsonl, ocr_truth.jsonl, queries.json, manifest.json,
+                     ci_thresholds.json, reports/latest.json
 eval/                corpus/, questions.jsonl, retrieval.jsonl (frozen), calibration.json, ci_thresholds.json, reports/
-backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS
+backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS · 0004 document intelligence
 backend/tests/                220 tests (see table above); fixtures.py generates the PDF/DOCX fixtures
-frontend/                     React + TS: retrieval selector, ranks, timings, evidence status, evaluation view
-scripts/                      migrate.py, seed_demo.py, embed_backfill.py, build_eval_dataset.py, evaluate.py, compare_embedders.py, experiment_query_translation.py, demo_scenarios.py, docker_smoke.py, evaluate_retrieval.py
-docs/                         architecture.md, evaluation.md, security.md, demo.md, benchmark-results.md (generated), releases/
+frontend/                     React + TS: retrieval selector, ranks, timings, evidence status, evaluation view,
+                              Document Intelligence workspace (DocIntel.tsx, diApi.ts)
+scripts/                      migrate.py, seed_demo.py, embed_backfill.py, build_eval_dataset.py, evaluate.py, compare_embedders.py, experiment_query_translation.py, demo_scenarios.py, docker_smoke.py, evaluate_retrieval.py,
+                              build_docintel_dataset.py, evaluate_docintel.py (Phase 3)
+docs/                         architecture.md, evaluation.md, security.md, demo.md, benchmark-results.md (generated), releases/,
+                              document-intelligence.md, extraction-evaluation.md, extraction-evaluation-results.md (generated),
+                              human-review.md, phase3-case-study.md
 ```
 
 ## Design invariants
@@ -344,7 +385,7 @@ docs/                         architecture.md, evaluation.md, security.md, demo.
 - [x] **v0.2d, quality:** query-aware verbatim extractive answers (answer fact recall 0.333 → 0.590 on test), sentence-level evidence policy (dev-calibrated, trade-off documented), embedder comparison (e5-small kept), query-translation experiment (not adopted), hard-wrapped sentence joining, mandatory answer-quality CI gate, scripted demo scenarios.
 - [x] **v0.2.0, release:** PDF/DOCX parser and upload tests, a complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid as the PostgreSQL default mode, and a reproducible evaluation re-run. See [CHANGELOG.md](CHANGELOG.md).
 - [ ] **Deferred from v0.2d:** a gated translated-query branch (the ungated one was measured and not adopted), LLM answer evaluation with the same deterministic checks, smaller-chunk ablation.
-- [ ] **v0.3, document intelligence:** OCR/Docling, tables, layout-aware chunking, schema extraction, reviewer UI.
+- [x] **v0.3 (Phase 3, branch `feat/phase3-document-intelligence`, not released yet), document intelligence:** layout-aware parsing (PDF, scans, DOCX, XLSX, TXT, MD), Tesseract OCR with deskew and table lattice, contract and invoice schemas with verbatim evidence, grounding, validation, human review, multi-document comparison, 32-document evaluation with CI gates. Not done: layout-aware *chunking*, Docling, live LLM extraction evaluation.
 - [ ] **v0.4, enterprise hardening:** OIDC, Postgres RLS, ANN index with filtered-recall benchmarks, reranking of authorized candidates, workers, prompt-injection regression tests.
 
 ---

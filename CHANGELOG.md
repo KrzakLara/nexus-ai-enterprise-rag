@@ -2,6 +2,80 @@
 
 All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). NEXUS AI is a **local demo**. No version is production-ready.
 
+## [Unreleased] - Phase 3 document intelligence (branch `feat/phase3-document-intelligence`)
+
+### Added
+- **Layout-aware parsing** (`backend/app/docintel/`) into one normalized structure: pages, headings, paragraphs, lines, tables (merged cells), and bounding boxes when the parser has them.
+  - Formats: text PDF, scanned PDF, mixed PDF, DOCX, **XLSX**, TXT, Markdown.
+  - Format detection by extension **and** magic bytes.
+  - XLSX formulas without cached values are reported as warnings, never computed.
+- **OCR:**
+  - Tesseract 5 (`eng+hrv`) on 300-dpi renders, decided per page;
+  - projection-profile deskew, ruling-line removal and table-lattice reconstruction with merged cells;
+  - checksum-gated correction of OCR digit confusions in IBANs.
+  - Installed in the Docker image and in CI.
+- **Classification** into contract / invoice / unknown with explicit uncertainty (`ambiguous`, `insufficient_evidence`).
+- **Pydantic v2 schemas** for contracts, invoices and line items. Every field carries its value, raw text, verbatim evidence (document, page, line or row, block, bbox, table cell), method, grounding and issues.
+- **Offline deterministic rules provider** (label, table and sentence rules, EN + HR, European number and date formats).
+- **Optional LLM provider:**
+  - strict JSON schema, verbatim evidence quotes and re-grounding;
+  - a labelled-line rule against injected instructions;
+  - explicit HTTP 502 on failure, with no fallback.
+  - Live behaviour is **NOT VERIFIED**.
+- **Grounding:**
+  - evidence must come from the right document, page, text and cell;
+  - numbers are compared numerically, and digits inside dates or IDs never count.
+- **Validation** (Decimal, ROUND_HALF_UP):
+  - line amounts, subtotal, tax, total, currency consistency, invoice and due dates, IBAN checksum;
+  - contract dates, amounts and plausibility.
+  - Issues are field-level, with expected and actual values; nothing is auto-corrected.
+- **Human review:**
+  - pending / needs_review / approved / rejected;
+  - corrections stored next to the original values;
+  - approval blocked by validation errors unless an override reason is recorded;
+  - optimistic locking (`expected_version`, HTTP 409);
+  - append-only review history and audit events;
+  - a `reviewer` role.
+- **Multi-document intelligence:**
+  - comparison of 2–10 documents with citations;
+  - structured queries (contracts expiring within N days, automatic renewal, invalid invoices, conflicting contract or supplier information);
+  - an EN/HR question router that refuses unsupported questions.
+- Alembic migration `0004_document_intelligence`: five new tables; no existing table changed.
+- **API:** `/api/intelligence/*`, `/api/documents/{id}/process|processing|structure|extraction`, `/api/extractions/{id}/*`.
+  - `/api/documents` gains an `intelligence` summary; `/api/health` reports `ocr_available`.
+- **Frontend:** Document Intelligence workspace.
+  - library with type and statuses;
+  - document structure view with evidence highlighting;
+  - editable extraction panel with validation issues, approve/reject/override and review history;
+  - comparison and insights views;
+  - reviewer and procurement demo personas.
+- **Evaluation:**
+  - frozen 32-document corpus (`eval/docintel/`, SHA-256 manifest, authored ground truth, dev/test split);
+  - `scripts/evaluate_docintel.py` measures field metrics, evidence, tables, validation, OCR CER/WER, simulated review, multi-document queries and a persona × document × endpoint security matrix;
+  - CI gates (`eval/docintel/ci_thresholds.json`).
+- Documentation: `docs/document-intelligence.md`, `docs/extraction-evaluation.md`, `docs/extraction-evaluation-results.md` (generated), `docs/human-review.md`, `docs/phase3-case-study.md`.
+
+### Changed
+- Upload uses the layout-aware parser. Page texts still feed the unchanged chunker, and they are byte-identical to v0.2 for the existing PDF fixtures.
+- Upload accepts XLSX and scanned PDFs. A broken `.xlsx` now returns 422 (malformed) instead of 415 (unsupported); the existing test case was split accordingly.
+- `scripts/seed_demo.py`:
+  - adds the reviewer and procurement personas and 11 corpus documents, granted only to `procurement` so the Phase 2 demo is unaffected;
+  - stores structure and extraction for every demo document.
+- CORS allows `PATCH` (review corrections).
+
+### Verified (2026-11-14)
+- **Tests, Linux container** (API image + dev extras, Tesseract 5.5.0, PostgreSQL 16 + pgvector): `pytest` **350 passed, 0 skipped**, 94 % line coverage of `backend/app`.
+- **Tests, Windows** (no Tesseract): 348 passed, 2 skipped (the two OCR tests).
+- **Phase 2 gates:** `scripts/evaluate.py --ci` passes with test-split metrics identical to the stored report and 0 authorization violations, so retrieval did not regress.
+- **Phase 3 gates:** `scripts/evaluate_docintel.py --ci` passes. The full run gives field F1 0.986 (test 0.973), evidence support 100 %, OCR CER 0.0015 and **0 violations in 1,946 security checks** (see `docs/extraction-evaluation-results.md`).
+- **Docker:**
+  - `scripts/demo_scenarios.py` on the Phase 3 stack: 9 PASS, 1 KNOWN (unchanged from v0.2.0);
+  - `scripts/docker_smoke.py` on a disposable instance: **27/27**.
+- **Frontend:**
+  - `tsc` and `npm run build` pass;
+  - a headless-browser check of the Document Intelligence workspace (reviewer login, library, scanned invoice detail with evidence highlight, conflicts insight) shows 0 console errors.
+- **Not verified:** live LLM extraction (no API key); GitHub Actions on this branch (not pushed).
+
 ## [0.2.0] - 2026-11-14
 
 First tagged release. It completes Phase 1 (MVP) and Phase 2 (advanced enterprise hybrid RAG). Every benchmark number below is generated by `scripts/evaluate.py`. Release notes: [docs/releases/v0.2.0.md](docs/releases/v0.2.0.md).
