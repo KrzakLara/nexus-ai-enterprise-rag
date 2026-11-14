@@ -2,12 +2,14 @@
 
 WARNING: demo auth is intentionally NOT suitable for internet-facing deployment.
 """
+import logging
 from contextlib import asynccontextmanager
 from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from anyio import to_thread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
@@ -29,6 +31,19 @@ from .rag import answer
 from .retrieval import RetrievalMode, RetrievalUnavailable, retrieve
 from .security import audit, authorized_documents, permitted_document
 
+log = logging.getLogger("nexus")
+
+
+def warm_up_embedder() -> str:
+    """Load the embedding model and embed one probe query, so the first user request does not pay
+    the ~15 s cold start. A failure is reported, not fatal: semantic/hybrid then answer HTTP 503."""
+    try:
+        get_embedder().embed_query("warm-up probe")
+        return "loaded"
+    except EmbeddingError as exc:
+        log.warning("Embedding model warm-up failed: %s", exc)
+        return f"failed: {str(exc)[:160]}"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -37,13 +52,16 @@ async def lifespan(_: FastAPI):
     # Schema is owned by Alembic (python scripts/migrate.py); fail fast instead of create_all().
     assert_schema_current(engine)
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    if settings.embedding_warmup and engine.dialect.name == "postgresql":
+        # In a worker thread: the event loop is not blocked while the model loads.
+        await to_thread.run_sync(warm_up_embedder)
     yield
 
 
 app = FastAPI(
     title="NEXUS AI — Enterprise Knowledge Intelligence",
     description="Secure-by-query RAG baseline with verifiable document evidence (LOCAL DEMO ONLY)",
-    version="0.2.0.dev0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -75,12 +93,19 @@ class RRFWeights(BaseModel):
     semantic: float = Field(default=settings.rrf_weight_semantic, ge=0, le=10)
 
 
+def default_retrieval_mode(dialect: str) -> RetrievalMode:
+    """Mode used when a request omits `mode`: hybrid where it is available (PostgreSQL), else the
+    bm25 baseline (SQLite). The UI makes the same choice from /api/health."""
+    return "hybrid" if dialect == "postgresql" else "bm25"
+
+
 class AskIn(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=10)
-    # bm25 = in-process Python BM25 baseline (default when omitted, v0.1 behaviour)
-    # lexical = PostgreSQL FTS | semantic = pgvector cosine | hybrid = FTS + semantic + RRF
-    mode: RetrievalMode = "bm25"
+    # bm25 = in-process Python BM25 baseline | lexical = PostgreSQL FTS
+    # semantic = pgvector cosine | hybrid = FTS + semantic + RRF
+    # Omitted: default_retrieval_mode() (hybrid on PostgreSQL, bm25 on SQLite)
+    mode: RetrievalMode | None = None
     candidates: int = Field(default=settings.retrieval_candidates, ge=1, le=200)  # hybrid only
     weights: RRFWeights = Field(default_factory=RRFWeights)  # hybrid only
     # semantic / hybrid: withhold candidates and answer no_evidence when evidence is insufficient
@@ -102,7 +127,9 @@ def health():
         "semantic_retrieval": engine.dialect.name == "postgresql",
         "retrieval_modes": (["bm25", "lexical", "semantic", "hybrid"]
                             if engine.dialect.name == "postgresql" else ["bm25"]),
+        "default_retrieval_mode": default_retrieval_mode(engine.dialect.name),
         "embedding_model": settings.embedding_model,
+        "embedding_model_loaded": get_embedder().is_loaded,
     }
 
 
@@ -188,8 +215,10 @@ def original_file(
     return FileResponse(path, filename=doc.filename)
 
 
+# A plain `def` route: FastAPI runs it in its worker threadpool, so parsing and CPU-bound
+# embedding do not block the event loop (other requests keep being served meanwhile).
 @app.post("/api/documents", status_code=201)
-async def upload(
+def upload(
     file: UploadFile = File(...),
     groups: str = Form(..., description="Comma-separated groups to grant"),
     user: User = Depends(current_user),
@@ -205,9 +234,11 @@ async def upload(
         raise HTTPException(400, "Provide 1 to 5 valid groups")
     if user.role != "admin" and not set(allowed_groups).issubset(set(user.groups)):
         raise HTTPException(403, "Cannot share with a group you do not belong to")
-    contents = await file.read(settings.max_upload_bytes + 1)
-    if not contents or len(contents) > settings.max_upload_bytes:
-        raise HTTPException(413, "Empty or over-sized upload")
+    contents = file.file.read(settings.max_upload_bytes + 1)
+    if not contents:
+        raise HTTPException(400, "The uploaded file is empty")
+    if len(contents) > settings.max_upload_bytes:
+        raise HTTPException(413, f"Upload exceeds {settings.max_upload_bytes // (1024 * 1024)} MB")
     try:
         pages = extract_pages(filename, contents)
     except Exception as exc:
@@ -289,17 +320,18 @@ def ask(
     embedder: Embedder = Depends(get_embedder),
 ):
     start = perf_counter()
+    mode = payload.mode or default_retrieval_mode(db.get_bind().dialect.name)
     weights = payload.weights.model_dump()
-    if payload.mode == "hybrid" and not any(w > 0 for w in weights.values()):
+    if mode == "hybrid" and not any(w > 0 for w in weights.values()):
         raise HTTPException(422, "At least one hybrid weight must be positive")
     try:
         result = retrieve(
-            db, user, payload.question, payload.mode, embedder,
+            db, user, payload.question, mode, embedder,
             top_k=payload.top_k, candidates=payload.candidates,
             weights=weights, rrf_k=settings.rrf_k,
         )
     except RetrievalUnavailable as exc:
-        raise HTTPException(409, f"{exc}; mode '{payload.mode}' is unavailable") from None
+        raise HTTPException(409, f"{exc}; mode '{mode}' is unavailable") from None
     except EmbeddingError as exc:
         # No silent fallback to keyword-only results: the caller asked for a specific strategy.
         raise HTTPException(503, f"Embedding model unavailable: {str(exc)[:160]}") from None
@@ -314,7 +346,7 @@ def ask(
         snippets = select_evidence(payload.question, hits, None)  # lexical scoring only
     result.timings_ms["evidence_selection"] = round((perf_counter() - extract_start) * 1000, 2)
     evidence = {"applied": False}
-    if payload.mode in ("semantic", "hybrid") and payload.apply_evidence_policy:
+    if mode in ("semantic", "hybrid") and payload.apply_evidence_policy:
         decision = assess(payload.question, result, EVIDENCE_POLICY, snippets)
         evidence = {
             "applied": True,
@@ -328,18 +360,13 @@ def ask(
         }
         if not decision.sufficient:
             hits, snippets = [], []  # insufficient evidence: nothing is cited or sent to an LLM
-    try:
-        response, mode = answer(payload.question, hits, sentence_embedder, snippets)
-    except Exception:
-        response, mode = (
-            "The model provider could not complete the request. Verify sources below.",
-            "provider_error",
-        )
+    # Provider failures and unverifiable LLM citations fall back to verbatim quotes inside answer().
+    response, answer_mode = answer(payload.question, hits, sentence_embedder, snippets)
     audit(db, user, "ask")
     db.commit()
     return {
         "answer": response,
-        "mode": mode,
+        "mode": answer_mode,
         "retrieval": result.mode,
         "duration_ms": round((perf_counter() - start) * 1000),
         "diagnostics": {
