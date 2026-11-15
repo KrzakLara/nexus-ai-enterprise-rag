@@ -1,0 +1,195 @@
+{
+  "generated_at": "2026-11-15T19:46:35Z",
+  "environment": {
+    "platform": "Linux-6.18.58.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "python": "3.12.16",
+    "cpu_count": 8,
+    "processor": null
+  },
+  "corpus": {
+    "tenants": 2,
+    "documents": 600,
+    "chunks": 2400,
+    "seed_seconds": 3.2
+  },
+  "rls": {
+    "lexical/b_admin/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 10.949,
+      "p95_ms": 14.709,
+      "p99_ms": 16.61,
+      "mean_ms": 11.414
+    },
+    "lexical/b_member/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 7.732,
+      "p95_ms": 10.562,
+      "p99_ms": 16.505,
+      "mean_ms": 8.691
+    },
+    "lexical/b_admin/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 12.51,
+      "p95_ms": 14.524,
+      "p99_ms": 15.73,
+      "mean_ms": 12.612
+    },
+    "lexical/b_member/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 27.213,
+      "p95_ms": 32.99,
+      "p99_ms": 34.974,
+      "mean_ms": 26.898
+    },
+    "semantic/b_admin/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 5.299,
+      "p95_ms": 6.607,
+      "p99_ms": 7.356,
+      "mean_ms": 5.519
+    },
+    "semantic/b_member/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 3.911,
+      "p95_ms": 5.958,
+      "p99_ms": 6.332,
+      "mean_ms": 4.169
+    },
+    "semantic/b_admin/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 8.675,
+      "p95_ms": 17.762,
+      "p99_ms": 24.716,
+      "mean_ms": 9.801
+    },
+    "semantic/b_member/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 13.44,
+      "p95_ms": 16.575,
+      "p99_ms": 21.492,
+      "mean_ms": 14.002
+    },
+    "hybrid/b_admin/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 33.262,
+      "p95_ms": 35.242,
+      "p99_ms": 38.275,
+      "mean_ms": 32.375
+    },
+    "hybrid/b_member/bypass_rls_migration_role": {
+      "n": 60,
+      "p50_ms": 26.785,
+      "p95_ms": 33.471,
+      "p99_ms": 37.465,
+      "mean_ms": 26.744
+    },
+    "hybrid/b_admin/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 22.439,
+      "p95_ms": 26.775,
+      "p99_ms": 32.252,
+      "mean_ms": 23.33
+    },
+    "hybrid/b_member/nexus_app_rls": {
+      "n": 60,
+      "p50_ms": 45.549,
+      "p95_ms": 54.685,
+      "p99_ms": 56.129,
+      "mean_ms": 46.159
+    },
+    "lexical/b_admin/rls_overhead_p50_percent": 14.3,
+    "lexical/b_member/rls_overhead_p50_percent": 252.0,
+    "semantic/b_admin/rls_overhead_p50_percent": 63.7,
+    "semantic/b_member/rls_overhead_p50_percent": 243.6,
+    "hybrid/b_admin/rls_overhead_p50_percent": -32.5,
+    "hybrid/b_member/rls_overhead_p50_percent": 70.1
+  },
+  "sessions": {
+    "cookie_session": {
+      "n": 120,
+      "p50_ms": 12.2,
+      "p95_ms": 14.838,
+      "p99_ms": 20.086,
+      "mean_ms": 12.716
+    },
+    "demo_bearer_jwt": {
+      "n": 120,
+      "p50_ms": 10.786,
+      "p95_ms": 12.008,
+      "p99_ms": 12.495,
+      "mean_ms": 10.579
+    }
+  },
+  "queue": {
+    "1_threads": {
+      "jobs": 300,
+      "seconds": 1.44,
+      "claim_complete_per_second": 209.0
+    },
+    "4_threads": {
+      "jobs": 300,
+      "seconds": 1.5,
+      "claim_complete_per_second": 200.4
+    }
+  },
+  "embeddings": {
+    "model": "intfloat/multilingual-e5-small",
+    "passages": 256,
+    "passages_per_second": 24.2,
+    "query": {
+      "n": 30,
+      "p50_ms": 23.95,
+      "p95_ms": 31.957,
+      "p99_ms": 32.132,
+      "mean_ms": 24.012
+    }
+  },
+  "parsing": {
+    "ocr_available": true,
+    "per_format": {
+      "pdf": {
+        "n": 10,
+        "p50_ms": 33.848,
+        "p95_ms": 73.188,
+        "p99_ms": 73.188,
+        "mean_ms": 36.129
+      },
+      "docx": {
+        "n": 4,
+        "p50_ms": 26.911,
+        "p95_ms": 28.102,
+        "p99_ms": 28.102,
+        "mean_ms": 23.854
+      },
+      "txt": {
+        "n": 4,
+        "p50_ms": 0.408,
+        "p95_ms": 1.088,
+        "p99_ms": 1.088,
+        "mean_ms": 0.507
+      },
+      "md": {
+        "n": 3,
+        "p50_ms": 0.296,
+        "p95_ms": 0.668,
+        "p99_ms": 0.668,
+        "mean_ms": 0.379
+      },
+      "pdf_scanned": {
+        "n": 8,
+        "p50_ms": 3022.525,
+        "p95_ms": 5820.317,
+        "p99_ms": 5820.317,
+        "mean_ms": 3658.691
+      },
+      "xlsx": {
+        "n": 3,
+        "p50_ms": 10.72,
+        "p95_ms": 92.005,
+        "p99_ms": 92.005,
+        "mean_ms": 37.084
+      }
+    },
+    "ocr_seconds_per_scanned_page_mean": 2.93
+  }
+}

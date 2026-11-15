@@ -3,12 +3,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronDown, ChevronRight,
   CircleAlert, CircleCheck, Clock3, CloudUpload, Database, FileLock2, FileSearch,
-  FileText, Fingerprint, LockKeyhole, LogOut, MessageSquareText, Plus,
-  Search, Send, Settings2, Shield, ShieldCheck, Sparkles, X,
+  FileText, Fingerprint, History, KeyRound, LoaderCircle, LockKeyhole, LogOut, MessageSquareText, Plus,
+  RefreshCw, RotateCcw, ScanText, Search, Send, Settings2, Shield, ShieldCheck, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
-import { api, RETRIEVAL_LABELS, type Answer, type AuditEvent, type Document, type DocumentDetail, type EvaluationSummary, type RetrievalMode, type Source, type User } from './api';
+import { DocIntelWorkspace } from './DocIntel';
+import {
+  api, auth, ACTIVE_JOB, ANSWER_MODE_LABELS, ApiError, isInFlight, RETRIEVAL_LABELS, STAGE_LABELS,
+  type Answer, type AuditEvent, type AuthConfig, type Document, type DocumentDetail, type EvaluationSummary,
+  type Job, type Lifecycle, type RetrievalMode, type Source, type UploadResult, type User, type Version,
+} from './api';
 
-type Section = 'assistant' | 'documents' | 'governance' | 'evaluation';
+type Section = 'assistant' | 'documents' | 'intelligence' | 'governance' | 'evaluation';
 type Message = { id: number; question: string; result?: Answer; error?: string };
 
 const DEMO_USERS = [
@@ -17,6 +22,8 @@ const DEMO_USERS = [
   { email: 'hr@northstar.demo', title: 'HR specialist', subtitle: 'HR only', initials: 'HR', color: 'orange' },
   { email: 'sales@northstar.demo', title: 'Sales associate', subtitle: 'Sales + Legal', initials: 'SA', color: 'teal' },
   { email: 'finance@otherco.demo', title: 'External tenant', subtitle: 'Otherco · Finance only', initials: 'OC', color: 'rose' },
+  { email: 'reviewer@northstar.demo', title: 'Document reviewer', subtitle: 'Reviews extractions · Procurement + Finance', initials: 'RV', color: 'teal' },
+  { email: 'procurement@northstar.demo', title: 'Procurement analyst', subtitle: 'Procurement · read-only extractions', initials: 'PR', color: 'orange' },
 ];
 // Guided demo (finance persona): each prompt runs in the retrieval mode it demonstrates.
 const QUICK_PROMPTS: { label: string; question: string; mode: RetrievalMode }[] = [
@@ -36,28 +43,38 @@ function Logo({ compact = false }: { compact?: boolean }) {
   </div>;
 }
 
-function Login({ onSuccess }: { onSuccess: (token: string, user: User) => void }) {
+const AUTH_ERRORS: Record<string, string> = {
+  no_tenant: 'You signed in, but your account is not a member of any NEXUS workspace. Ask an administrator for access.',
+  access_denied: 'Access was denied for this identity.',
+  login_failed: 'Sign-in could not be completed. Please try again.',
+  invalid_state: 'The sign-in request was invalid or already used. Please start again.',
+  login_expired: 'The sign-in request expired. Please start again.',
+};
+
+function Login({ config, notice, onSuccess }: { config: AuthConfig | null; notice: string; onSuccess: (user: User) => void }) {
   const [selected, setSelected] = useState(DEMO_USERS[1].email);
   const [password, setPassword] = useState('DemoPass123!');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const oidc = config?.auth_mode === 'oidc';
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setLoading(true);
-    try { const response = await api.login(selected, password); onSuccess(response.access_token, response.user); }
+    if (oidc) { window.location.assign(api.oidcLoginUrl(window.location.pathname || '/')); return; }
+    try { const response = await api.login(selected, password); auth.setCsrf(response.csrf_token); onSuccess(response.user); }
     catch (exception) { setError((exception as Error).message); }
     finally { setLoading(false); }
   }
   return <div className="login-page">
     <div className="login-art">
-      <div className="login-top"><Logo /><span className="demo-label">PORTFOLIO PROJECT · V0.2-DEV</span></div>
+      <div className="login-top"><Logo /><span className="demo-label">PORTFOLIO PROJECT · V0.4.0</span></div>
       <div className="login-center">
         <span className="eyebrow muted-on-dark"><span className="small-pulse" /> AI-POWERED ENTERPRISE SEARCH</span>
         <h1>Knowledge you can <em>trust.</em></h1>
         <p>Ask questions across thousands of documents, inspect grounded evidence, and keep confidential information in the right hands.</p>
         <div className="login-features">
           <div><FileSearch size={19} /><span>Evidence-backed answers</span></div>
-          <div><ShieldCheck size={19} /><span>Permission-aware retrieval</span></div>
-          <div><Fingerprint size={19} /><span>Auditable by design</span></div>
+          <div><ShieldCheck size={19} /><span>Permission-aware retrieval + row-level security</span></div>
+          <div><Fingerprint size={19} /><span>Single sign-on, auditable by design</span></div>
         </div>
       </div>
       <div className="login-bottom"><span>DEVELOPED AS AN APPLIED AI ENGINEERING CASE STUDY</span><span>© 2026 NEXUS AI</span></div>
@@ -65,26 +82,35 @@ function Login({ onSuccess }: { onSuccess: (token: string, user: User) => void }
     </div>
     <div className="login-form-pane">
       <form className="login-card" onSubmit={submit}>
-        <div className="mini-icon"><LockKeyhole size={23} /></div>
-        <div className="eyebrow">INTERACTIVE PRODUCT DEMO</div>
+        <div className="mini-icon">{oidc ? <KeyRound size={23} /> : <LockKeyhole size={23} />}</div>
+        <div className="eyebrow">{oidc ? 'SINGLE SIGN-ON' : 'INTERACTIVE PRODUCT DEMO'}</div>
         <h2>Enter your workspace</h2>
-        <p className="subtext">Select a demo identity to experience role-based document access.</p>
-        <div className="persona-list">
-          {DEMO_USERS.map(persona => <button type="button" className={`persona ${selected === persona.email ? 'selected' : ''}`}
-            key={persona.email} onClick={() => setSelected(persona.email)}>
-            <span className={`avatar ${persona.color}`}>{persona.initials}</span>
-            <span className="persona-copy"><strong>{persona.title}</strong><small>{persona.subtitle}</small></span>
-            <span className={`radio-dot ${selected === persona.email ? 'active' : ''}`} />
-          </button>)}
-        </div>
-        <label className="field-label" htmlFor="demo-password">Demo password</label>
-        <input id="demo-password" className="text-input" type="password" value={password}
-          onChange={event => setPassword(event.target.value)} autoComplete="off" />
-        {error && <div className="form-error"><CircleAlert size={16} />{error}</div>}
-        <button className="button primary full" type="submit" disabled={loading}>
-          {loading ? 'Signing in...' : 'Open workspace'} <ArrowRight size={18} />
-        </button>
-        <p className="form-note"><Shield size={14} /> Synthetic demo data. Never use real confidential documents here.</p>
+        {notice && <div className="form-error"><CircleAlert size={16} />{notice}</div>}
+        {!config && <p className="subtext">Connecting to the API…</p>}
+        {oidc && <>
+          <p className="subtext">You will be redirected to your organisation&apos;s identity provider. Your browser only receives a secure, HttpOnly session cookie.</p>
+          <button className="button primary full" type="submit" disabled={loading}>{loading ? 'Redirecting…' : 'Sign in with SSO'} <ArrowRight size={18} /></button>
+          <p className="form-note"><Shield size={14} /> Local development identity provider (Keycloak) with synthetic users.</p>
+        </>}
+        {config && !oidc && <>
+          <p className="subtext">Select a demo identity to experience role-based document access.</p>
+          <div className="persona-list">
+            {DEMO_USERS.map(persona => <button type="button" className={`persona ${selected === persona.email ? 'selected' : ''}`}
+              key={persona.email} onClick={() => setSelected(persona.email)}>
+              <span className={`avatar ${persona.color}`}>{persona.initials}</span>
+              <span className="persona-copy"><strong>{persona.title}</strong><small>{persona.subtitle}</small></span>
+              <span className={`radio-dot ${selected === persona.email ? 'active' : ''}`} />
+            </button>)}
+          </div>
+          <label className="field-label" htmlFor="demo-password">Demo password</label>
+          <input id="demo-password" className="text-input" type="password" value={password}
+            onChange={event => setPassword(event.target.value)} autoComplete="off" />
+          {error && <div className="form-error"><CircleAlert size={16} />{error}</div>}
+          <button className="button primary full" type="submit" disabled={loading}>
+            {loading ? 'Signing in...' : 'Open workspace'} <ArrowRight size={18} />
+          </button>
+          <p className="form-note"><Shield size={14} /> Demo mode (local only). Synthetic data — never use real confidential documents here.</p>
+        </>}
       </form>
     </div>
   </div>;
@@ -95,8 +121,9 @@ function FieldStatus({ status }: { status: string }) {
 }
 
 function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('nexus_demo_token'));
   const [user, setUser] = useState<User | null>(null);
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+  const [authNotice, setAuthNotice] = useState('');
   const [initializing, setInitializing] = useState(true);
   const [section, setSection] = useState<Section>('assistant');
   const [docs, setDocs] = useState<Document[]>([]);
@@ -114,27 +141,49 @@ function App() {
   const [notice, setNotice] = useState('');
   const chatEnd = useRef<HTMLDivElement>(null);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('nexus_demo_token'); setToken(null); setUser(null);
-    setDocs([]); setMessages([]); setOpenDoc(null); setAudits([]);
+  const resetWorkspace = useCallback(() => {
+    auth.setCsrf(null); setUser(null); setDocs([]); setMessages([]); setOpenDoc(null); setAudits([]);
   }, []);
 
+  async function logout() {
+    try {
+      const result = await api.logout();
+      resetWorkspace();
+      if (result.logout_url) { window.location.assign(result.logout_url); return; }  // RP-initiated IdP logout
+    } catch { resetWorkspace(); }
+  }
+
+  // Session restoration: the HttpOnly cookie is sent automatically; the CSRF token comes back in the body.
   useEffect(() => {
-    if (!token) { setInitializing(false); return; }
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('auth_error');
+    if (error) { setAuthNotice(AUTH_ERRORS[error] ?? 'Sign-in failed.'); window.history.replaceState({}, '', window.location.pathname); }
+    auth.onSessionLost(err => {
+      resetWorkspace();
+      setAuthNotice(err.code === 'session_revoked' ? 'Your session was ended (signed out elsewhere or access changed). Please sign in again.'
+        : 'Your session has expired. Please sign in again.');
+    });
     let alive = true;
-    api.me(token).then(current => { if (alive) setUser(current); })
-      .catch(() => { if (alive) logout(); })
+    api.authConfig().then(c => { if (alive) setConfig(c); }).catch(() => { /* login screen shows: connecting */ });
+    api.session().then(info => { if (!alive) return; auth.setCsrf(info.csrf_token ?? null); setUser(info.user); })
+      .catch(() => { /* not signed in */ })
       .finally(() => { if (alive) setInitializing(false); });
-    return () => { alive = false; };
-  }, [token, logout]);
+    return () => { alive = false; auth.onSessionLost(null); };
+  }, [resetWorkspace]);
 
   const loadDocuments = useCallback(async () => {
-    if (!token) return;
-    try { setDocs(await api.documents(token)); }
-    catch (exception) { setNotice((exception as Error).message); }
-  }, [token]);
+    try { setDocs(await api.documents()); }
+    catch (exception) { if (!(exception instanceof ApiError && exception.isSessionProblem)) setNotice((exception as Error).message); }
+  }, []);
 
   useEffect(() => { if (user) void loadDocuments(); }, [user, loadDocuments]);
+  // Live processing status: poll while any document is queued / processing (real job stages only).
+  const inFlight = docs.some(isInFlight);
+  useEffect(() => {
+    if (!user || !inFlight) return;
+    const timer = window.setInterval(() => void loadDocuments(), 2000);
+    return () => window.clearInterval(timer);
+  }, [user, inFlight, loadDocuments]);
   useEffect(() => {
     api.health().then(health => {
       const modes = health.retrieval_modes?.length ? health.retrieval_modes : ['bm25' as RetrievalMode];
@@ -156,11 +205,11 @@ function App() {
     const normalized = question.trim();
     const mode = modeOverride && availableModes.includes(modeOverride) ? modeOverride : retrievalMode;
     if (modeOverride && mode === modeOverride) setRetrievalMode(modeOverride);
-    if (!normalized || !token || asking) return;
+    if (!normalized || !user || asking) return;
     setSection('assistant'); setDraft(''); setAsking(true);
     const id = Date.now(); setMessages(prev => [...prev, { id, question: normalized }]);
     try {
-      const result = await api.ask(token, normalized, mode);
+      const result = await api.ask(normalized, mode);
       setMessages(prev => prev.map(item => item.id === id ? { ...item, result } : item));
     } catch (exception) {
       setMessages(prev => prev.map(item => item.id === id ? { ...item, error: (exception as Error).message } : item));
@@ -168,35 +217,31 @@ function App() {
   }
 
   async function openDocument(id: string) {
-    if (!token) return;
-    try { setOpenDoc(await api.document(token, id)); }
+    try { setOpenDoc(await api.document(id)); }
     catch (exception) { setNotice((exception as Error).message); }
   }
 
   async function showAudits() {
     setSection('governance');
-    if (user?.role === 'admin' && token) {
-      try { setAudits(await api.audit(token)); } catch (exception) { setNotice((exception as Error).message); }
+    if (user?.role === 'admin') {
+      try { setAudits(await api.audit()); } catch (exception) { setNotice((exception as Error).message); }
     }
   }
 
   async function showEvaluation() {
     setSection('evaluation');
-    if (!token || evaluation) return;
-    try { setEvaluation(await api.evaluation(token)); setEvaluationError(''); }
+    if (evaluation) return;
+    try { setEvaluation(await api.evaluation()); setEvaluationError(''); }
     catch (exception) { setEvaluationError((exception as Error).message); }
   }
 
   async function downloadDoc(doc: Document | DocumentDetail) {
-    if (!token) return;
-    try { await api.download(token, doc); }
+    try { await api.download(`/api/documents/${doc.id}/source`, doc.filename); }
     catch (exception) { setNotice((exception as Error).message); }
   }
 
   if (initializing) return <div className="loading-screen"><Logo /><div className="loading-bar" /></div>;
-  if (!user || !token) return <Login onSuccess={(jwt, loginUser) => {
-    localStorage.setItem('nexus_demo_token', jwt); setToken(jwt); setUser(loginUser);
-  }} />;
+  if (!user) return <Login config={config} notice={authNotice} onSuccess={loginUser => { setAuthNotice(''); setUser(loginUser); }} />;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -206,6 +251,7 @@ function App() {
       <nav className="nav-list" aria-label="Main navigation">
         <button onClick={() => setSection('assistant')} className={`nav-link ${section === 'assistant' ? 'active' : ''}`}><MessageSquareText size={18} /> AI Assistant <span className="nav-beta">AI</span></button>
         <button onClick={() => setSection('documents')} className={`nav-link ${section === 'documents' ? 'active' : ''}`}><BookOpen size={18} /> Document Library <span className="nav-count">{docs.length}</span></button>
+        <button onClick={() => setSection('intelligence')} className={`nav-link ${section === 'intelligence' ? 'active' : ''}`}><ScanText size={18} /> Document Intelligence</button>
         <button onClick={() => void showAudits()} className={`nav-link ${section === 'governance' ? 'active' : ''}`}><ShieldCheck size={18} /> Access & Audit</button>
         <button onClick={() => void showEvaluation()} className={`nav-link ${section === 'evaluation' ? 'active' : ''}`}><Activity size={18} /> Evaluation</button>
       </nav>
@@ -213,13 +259,13 @@ function App() {
       <div className="nav-static"><Database size={18} /> SQL document index <span className="status-dot" /></div>
       <div className="nav-static"><Activity size={18} /> FTS + pgvector · RRF <span className="status-dot" /></div>
       <div className="sidebar-bottom">
-        <div className="demo-warning"><div><LockKeyhole size={16} /> LOCAL DEMO</div><p>Prototype identity, synthetic data and permission-aware retrieval. Not production SSO.</p></div>
-        <div className="profile-mini"><span className={`avatar ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span><div><strong>{persona?.title || 'Member'}</strong><small>{user.email}</small></div><button title="Switch demo user" onClick={logout}><LogOut size={17} /></button></div>
+        <div className="demo-warning"><div><LockKeyhole size={16} /> {config?.auth_mode === 'oidc' ? 'SSO SESSION' : 'LOCAL DEMO'}</div><p>{config?.auth_mode === 'oidc' ? 'Signed in through OpenID Connect. Row-level security and the application ACL both apply.' : 'Synthetic demo identities and data. Production deployments use AUTH_MODE=oidc.'}</p></div>
+        <div className="profile-mini"><span className={`avatar ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span><div><strong>{persona?.title || 'Member'}</strong><small>{user.email}</small></div><button title="Sign out" onClick={() => void logout()}><LogOut size={17} /></button></div>
       </div>
     </aside>
     <main className="main-pane">
-      <header className="topbar"><div className="breadcrumbs">Northstar / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : 'Access & Audit'}</strong></div>
-        <div className="topbar-right"><span className="environment"><span className="small-pulse" />Demo environment</span><span className="topbar-separator" /><span className={`avatar tiny ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span></div></header>
+      <header className="topbar"><div className="breadcrumbs">Northstar / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
+        <div className="topbar-right"><span className="environment"><span className="small-pulse" />{config?.auth_mode === 'oidc' ? 'SSO' : 'Demo environment'}</span><span className="topbar-separator" /><span className={`avatar tiny ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span></div></header>
       {section === 'assistant' && <div className="assistant-layout">
         <div className="assistant-main">
           <div className="section-heading"><div><span className="eyebrow"><Sparkles size={14} /> AI WORKSPACE</span><h1>Ask your knowledge base<span>.</span></h1><p>Grounded answers from documents you have permission to access.</p></div><button className="button secondary small" onClick={() => setMessages([])}><Plus size={16} /> New chat</button></div>
@@ -231,13 +277,13 @@ function App() {
                 {!message.result && !message.error && <div className="thinking"><span /><span /><span /> Searching authorized documents...</div>}
                 {message.error && <div className="inline-error"><CircleAlert size={17} />{message.error}</div>}
                 {message.result && <><div className="answer-content">{message.result.answer}</div>
-                  <div className="answer-metadata"><span className="mini-badge"><ShieldCheck size={13} /> Authorization filtered</span><span>{message.result.sources.length} sources</span><span>{RETRIEVAL_LABELS[message.result.retrieval] ?? message.result.retrieval}</span><span>{message.result.duration_ms} ms total</span>{message.result.diagnostics && <RetrievalTimings diagnostics={message.result.diagnostics} />}{message.result.diagnostics?.evidence?.applied && !message.result.diagnostics.evidence.sufficient && <span className="mini-badge" title="Evidence-sufficiency policy withheld the retrieved candidates">Insufficient evidence · {(message.result.diagnostics.evidence.reasons ?? []).join(', ').replace(/_/g, ' ')}</span>}<span>{message.result.mode === 'llm' ? 'LLM-generated' : 'Offline extractive'}</span></div>
+                  <div className="answer-metadata"><span className="mini-badge"><ShieldCheck size={13} /> Authorization filtered</span><span>{message.result.sources.length} sources</span><span>{RETRIEVAL_LABELS[message.result.retrieval] ?? message.result.retrieval}</span><span>{message.result.duration_ms} ms total</span>{message.result.diagnostics && <RetrievalTimings diagnostics={message.result.diagnostics} />}{message.result.diagnostics?.evidence?.applied && !message.result.diagnostics.evidence.sufficient && <span className="mini-badge" title="Evidence-sufficiency policy withheld the retrieved candidates">Insufficient evidence · {(message.result.diagnostics.evidence.reasons ?? []).join(', ').replace(/_/g, ' ')}</span>}<span>{ANSWER_MODE_LABELS[message.result.mode] ?? message.result.mode}</span></div>
                   {message.result.sources.length > 0 && <div className="inline-sources">{message.result.sources.slice(0, 3).map(source => <button key={source.chunk_id} onClick={() => void openDocument(source.document_id)}><FileText size={14} /><strong>[{source.id}]</strong> {source.title} <span>p.{source.page}</span><ChevronRight size={14} /></button>)}</div>}
                 </>}
               </div></div></div>)}
             <div ref={chatEnd} />
           </div>
-          <form className="chat-form" onSubmit={event => { event.preventDefault(); void ask(draft); }}><div className="chat-input-wrap"><Sparkles size={19} /><input aria-label="Ask a question" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Ask anything about your documents..." /><button type="submit" disabled={!draft.trim() || asking} title="Send question"><Send size={19} /></button></div><div className="chat-hint"><span><LockKeyhole size={13} /> Results are filtered before retrieval</span><label className="mode-select">Retrieval <select aria-label="Retrieval mode" value={retrievalMode} onChange={event => setRetrievalMode(event.target.value as RetrievalMode)}>{(['bm25', 'lexical', 'semantic', 'hybrid'] as RetrievalMode[]).map(mode => <option key={mode} value={mode} disabled={!availableModes.includes(mode)}>{RETRIEVAL_LABELS[mode]}{availableModes.includes(mode) ? '' : ' (needs PostgreSQL)'}</option>)}</select></label><span>Evidence-first AI · v0.2-dev</span></div></form>
+          <form className="chat-form" onSubmit={event => { event.preventDefault(); void ask(draft); }}><div className="chat-input-wrap"><Sparkles size={19} /><input aria-label="Ask a question" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Ask anything about your documents..." /><button type="submit" disabled={!draft.trim() || asking} title="Send question"><Send size={19} /></button></div><div className="chat-hint"><span><LockKeyhole size={13} /> Results are filtered before retrieval</span><label className="mode-select">Retrieval <select aria-label="Retrieval mode" value={retrievalMode} onChange={event => setRetrievalMode(event.target.value as RetrievalMode)}>{(['bm25', 'lexical', 'semantic', 'hybrid'] as RetrievalMode[]).map(mode => <option key={mode} value={mode} disabled={!availableModes.includes(mode)}>{RETRIEVAL_LABELS[mode]}{availableModes.includes(mode) ? '' : ' (needs PostgreSQL)'}</option>)}</select></label><span>Evidence-first AI · v0.4.0</span></div></form>
         </div>
         <aside className="evidence-pane"><div className="evidence-top"><div><span className="eyebrow">TRANSPARENCY LAYER</span><h3>Source inspector</h3></div><span className="evidence-live"><span className="status-dot" />LIVE</span></div>
           <p className="evidence-description">Review the exact excerpts used to support each answer.</p>
@@ -248,7 +294,7 @@ function App() {
       {section === 'documents' && <div className="content-view"><div className="page-heading"><div><div className="eyebrow">DOCUMENT INTELLIGENCE</div><h1>Document library<span>.</span></h1><p>Search, inspect, and manage your authorized business documents.</p></div><button className="button primary" onClick={() => setUploadOpen(true)}><Plus size={18} /> Upload document</button></div>
         <div className="stats-grid"><Stat icon={<BookOpen size={21} />} label="Accessible documents" value={String(docs.length)} detail="Tenant + group filtered" /><Stat icon={<FileText size={21} />} label="Indexed pages" value={String(docs.reduce((sum, d) => sum + d.pages, 0))} detail="Source-aware extraction" /><Stat icon={<Settings2 size={21} />} label="Extracted fields" value={String(totalFields)} detail="Review required" /><Stat icon={<ShieldCheck size={21} />} label="Access policy" value="Enforced" detail="Default deny for other groups" /></div>
         <section className="library-card"><div className="library-header"><div><h3>All accessible files</h3><p>Documents you can read under your current identity.</p></div><div className="search-control"><Search size={17} /><input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search file names or groups" aria-label="Search documents" /></div></div>
-          <div className="doc-table-wrap"><table className="doc-table"><thead><tr><th>DOCUMENT</th><th>ACCESS GROUPS</th><th>FIELDS</th><th>PAGES</th><th /></tr></thead><tbody>{filteredDocs.map(doc => <tr key={doc.id} onClick={() => void openDocument(doc.id)}><td><div className="file-item"><span className="file-icon"><FileText size={20} /></span><div><strong>{doc.title}</strong><small>{doc.filename}</small></div></div></td><td>{doc.groups.map(group => <span className="group-pill" key={group}>{group}</span>)}</td><td><span className="numeric"><Settings2 size={14} /> {Object.keys(doc.fields ?? {}).length}</span></td><td>{doc.pages}</td><td><ChevronRight size={16} /></td></tr>)}</tbody></table>
+          <div className="doc-table-wrap"><table className="doc-table"><thead><tr><th>DOCUMENT</th><th>STATUS</th><th>ACCESS GROUPS</th><th>FIELDS</th><th>PAGES</th><th /></tr></thead><tbody>{filteredDocs.map(doc => <tr key={doc.id} onClick={() => void openDocument(doc.id)}><td><div className="file-item"><span className="file-icon"><FileText size={20} /></span><div><strong>{doc.title}</strong><small>{doc.filename}{doc.current_version > 1 ? ` · v${doc.current_version}` : ''}</small></div></div></td><td onClick={event => event.stopPropagation()}><ProcessingBadge doc={doc} onRetry={async jobId => { try { await api.retryJob(jobId); await loadDocuments(); } catch (exception) { setNotice((exception as Error).message); } }} /></td><td>{doc.groups.map(group => <span className="group-pill" key={group}>{group}</span>)}</td><td><span className="numeric"><Settings2 size={14} /> {Object.keys(doc.fields ?? {}).length}</span></td><td>{doc.pages}</td><td><ChevronRight size={16} /></td></tr>)}</tbody></table>
             {filteredDocs.length === 0 && <div className="no-results"><Search size={25} /><strong>No documents found</strong><p>Try a different term, switch identity or upload a document.</p></div>}
           </div></section>
           <div className="library-footnote"><LockKeyhole size={16} /> You only see documents allowed for <strong>{user.email}</strong>. Switch identities to test isolation.</div>
@@ -256,13 +302,14 @@ function App() {
       {section === 'governance' && <div className="content-view"><div className="page-heading"><div><div className="eyebrow">SECURITY & GOVERNANCE</div><h1>Trust by architecture<span>.</span></h1><p>Permission checks, tenant separation, and a traceable activity log.</p></div><span className="security-highlight"><ShieldCheck size={17} /> Query-time ACL</span></div>
         <div className="governance-grid"><div className="policy-card"><div className="policy-icon"><ShieldCheck size={24} /></div><h3>Permission-aware retrieval</h3><p>Document scope is filtered in SQL <strong>before any chunks are loaded</strong> for ranking or context generation.</p><div className="policy-tag"><Check size={15} /> Implemented</div></div><div className="policy-card"><div className="policy-icon"><Fingerprint size={24} /></div><h3>Tenant isolation</h3><p>All authorized document queries are scoped to the authenticated user’s tenant.</p><div className="policy-tag"><Check size={15} /> Implemented</div></div><div className="policy-card"><div className="policy-icon"><FileLock2 size={24} /></div><h3>Audit trail</h3><p>Uploads, document views, downloads, and searches generate audit events in the database.</p><div className="policy-tag"><Check size={15} /> Implemented</div></div></div>
         <div className="governance-lower"><div className="permissions-panel"><div className="eyebrow">CURRENT IDENTITY</div><h3>Effective permissions</h3><div className="permission-line"><span>User</span><strong>{user.email}</strong></div><div className="permission-line"><span>Tenant</span><strong>{user.tenant}</strong></div><div className="permission-line"><span>Role</span><strong>{user.role}</strong></div><div className="permission-line"><span>Groups</span><div>{user.groups.map(group => <span className="group-pill" key={group}>{group}</span>)}</div></div><div className="divider-soft" /><div className="permission-note"><CircleCheck size={17} /> Other tenants and groups are excluded by default.</div></div><div className="audit-panel"><div className="audit-heading"><div><div className="eyebrow">ACTIVITY</div><h3>Recent audit events</h3></div>{user.role === 'admin' && <button className="link-button" onClick={() => void showAudits()}>Refresh <ArrowRight size={15} /></button>}</div>{user.role !== 'admin' ? <div className="audit-locked"><LockKeyhole size={27} /><strong>Admin access required</strong><p>Switch to the workspace admin to inspect tenant-scoped audit events.</p></div> : audits.length === 0 ? <div className="audit-locked"><Clock3 size={27} /><strong>No events yet</strong><p>Open a file or ask a question, then refresh this panel.</p></div> : <div className="audit-list">{audits.map(event => <div key={event.id} className="audit-row"><span className="audit-dot" /><span><strong>{event.action.replace('_', ' ')}</strong><small>{event.user_id.slice(0, 8)}… {event.document_id ? ` · ${event.document_id.slice(0, 8)}…` : ''}</small></span><time>{new Date(event.created_at).toLocaleString()}</time></div>)}</div>}</div></div>
-        <div className="roadmap-note"><CircleAlert size={18} /><span><strong>Roadmap, not implemented:</strong> labeled retrieval evaluation, relevance thresholds, reranking, production OIDC SSO, OCR for scanned PDFs, background workers, hardened storage, and external security review.</span></div>
+        <div className="roadmap-note"><CircleAlert size={18} /><span><strong>Hardened, not certified.</strong> v0.4.0 adds OpenID Connect single sign-on with server-side sessions, PostgreSQL row-level security below the application ACL, durable background processing, private S3-compatible storage with a full document lifecycle, and structured logs, metrics and traces. <strong>Not implemented yet:</strong> reranking, ANN indexes, live LLM extraction evaluation, multi-region operation and an external security review / penetration test.</span></div>
       </div>}
       {section === 'evaluation' && <EvaluationView data={evaluation} error={evaluationError} />}
+      {section === 'intelligence' && <DocIntelWorkspace user={user} />}
     </main>
     {notice && <div className="toast"><CircleAlert size={17} />{notice}<button title="Close" onClick={() => setNotice('')}><X size={17} /></button></div>}
-    {openDoc && <div className="overlay" role="presentation" onClick={() => setOpenDoc(null)}><div className="detail-drawer" role="dialog" aria-modal="true" aria-label="Document details" onClick={event => event.stopPropagation()}><div className="drawer-header"><div className="eyebrow">DOCUMENT INSPECTOR</div><button title="Close document" onClick={() => setOpenDoc(null)}><X size={20} /></button></div><div className="drawer-content"><div className="document-hero"><div className="large-file-icon"><FileText size={27} /></div><h2>{openDoc.title}</h2><p>{openDoc.filename}</p><span className="mini-badge"><LockKeyhole size={13} /> Authorized view</span></div><div className="drawer-action"><button className="button secondary full" onClick={() => void downloadDoc(openDoc)}><ArrowDownToLine size={17} /> Download original</button></div><div className="drawer-section"><div className="drawer-section-heading"><h3>Extracted fields</h3><span className="small-counter">{Object.keys(openDoc.fields ?? {}).length}</span></div>{Object.entries(openDoc.fields ?? {}).length === 0 ? <p className="muted-small">No structured contract fields found by the regex baseline.</p> : Object.entries(openDoc.fields).map(([key, field]) => <div className="extracted-field" key={key}><span className="extract-key">{key.replaceAll('_', ' ')}</span><strong>{field.value}</strong><small>Page {field.page} · <FieldStatus status={field.status} /></small><p>{field.evidence}</p></div>)}</div><div className="drawer-section"><div className="drawer-section-heading"><h3>Source text</h3><span className="small-counter">{openDoc.page_count} p.</span></div>{openDoc.pages.map((page, index) => <div className="document-page" key={index}><span>PAGE {page.page}</span><p>{page.content}</p></div>)}</div></div></div></div>}
-    {uploadOpen && <UploadModal user={user} token={token} onClose={() => setUploadOpen(false)} onSuccess={() => { setUploadOpen(false); setNotice('Document indexed successfully.'); void loadDocuments(); }} />}
+    {openDoc && <div className="overlay" role="presentation" onClick={() => setOpenDoc(null)}><div className="detail-drawer" role="dialog" aria-modal="true" aria-label="Document details" onClick={event => event.stopPropagation()}><div className="drawer-header"><div className="eyebrow">DOCUMENT INSPECTOR</div><button title="Close document" onClick={() => setOpenDoc(null)}><X size={20} /></button></div><div className="drawer-content"><div className="document-hero"><div className="large-file-icon"><FileText size={27} /></div><h2>{openDoc.title}</h2><p>{openDoc.filename}</p><span className="mini-badge"><LockKeyhole size={13} /> Authorized view</span></div><div className="drawer-action"><button className="button secondary full" onClick={() => void downloadDoc(openDoc)}><ArrowDownToLine size={17} /> Download original</button></div><LifecyclePanel doc={openDoc} user={user} onChanged={async deleted => { if (deleted) setOpenDoc(null); else await openDocument(openDoc.id); await loadDocuments(); }} onNotice={setNotice} /><div className="drawer-section"><div className="drawer-section-heading"><h3>Extracted fields</h3><span className="small-counter">{Object.keys(openDoc.fields ?? {}).length}</span></div>{Object.entries(openDoc.fields ?? {}).length === 0 ? <p className="muted-small">No structured contract fields found by the regex baseline.</p> : Object.entries(openDoc.fields).map(([key, field]) => <div className="extracted-field" key={key}><span className="extract-key">{key.replaceAll('_', ' ')}</span><strong>{field.value}</strong><small>Page {field.page} · <FieldStatus status={field.status} /></small><p>{field.evidence}</p></div>)}</div><div className="drawer-section"><div className="drawer-section-heading"><h3>Source text</h3><span className="small-counter">{openDoc.page_count} p.</span></div>{openDoc.pages.map((page, index) => <div className="document-page" key={index}><span>PAGE {page.page}</span><p>{page.content}</p></div>)}</div></div></div></div>}
+    {uploadOpen && <UploadModal user={user} onClose={() => setUploadOpen(false)} onSuccess={result => { setUploadOpen(false); setNotice(uploadNotice(result)); void loadDocuments(); }} />}
   </div>;
 }
 
@@ -334,7 +381,93 @@ function Stat({ icon, label, value, detail }: { icon: React.ReactNode; label: st
   return <div className="stat"><div className="stat-upper"><span>{label}</span><div className="stat-icon">{icon}</div></div><strong>{value}</strong><small>{detail}</small></div>;
 }
 
-function UploadModal({ token, user, onClose, onSuccess }: { token: string; user: User; onClose: () => void; onSuccess: () => void }) {
+/** Upload feedback that reflects the real outcome (queued, indexed, or embedding failed). */
+function uploadNotice(result: UploadResult): string {
+  if (result.deduplicated) return 'This upload was already received (same Idempotency-Key); showing the existing document.';
+  if (result.lifecycle_state === 'uploaded' || result.job?.status === 'queued')
+    return 'Document stored privately and queued for processing. Its status updates in the library.';
+  const pages = `${result.pages ?? 0} page${result.pages === 1 ? '' : 's'}`;
+  const status = result.embedding_status ?? '';
+  if (status.startsWith('embedded:')) return `Document stored and indexed (${pages}, ${status.slice(9)} chunk embeddings).`;
+  if (status.startsWith('failed')) return `Document stored and keyword-searchable (${pages}), but embedding ${status}. It will be retried.`;
+  return `Document stored and keyword-searchable (${pages}); semantic indexing ${status.replace(/_/g, ' ')}.`;
+}
+
+/** Status text from the REAL job state and stage reported by the worker (no estimated percentages). */
+function stageText(lc: Lifecycle): string {
+  const p = lc.processing;
+  if (lc.lifecycle_state === 'failed' || p?.status === 'failed') return `Failed${p?.error_code ? ` · ${p.error_code.replace(/_/g, ' ')}` : ''}`;
+  if (p?.status === 'retrying') return `Retrying (attempt ${p.attempts} of ${p.max_attempts})${p.error_code ? ` · ${p.error_code.replace(/_/g, ' ')}` : ''}`;
+  if (p && ACTIVE_JOB.has(p.status)) return p.status === 'queued' ? 'Queued' : `Processing · ${STAGE_LABELS[p.stage ?? ''] ?? p.stage ?? ''}`;
+  if (lc.lifecycle_state === 'uploaded') return 'Queued';
+  if (lc.lifecycle_state === 'processing') return 'Processing';
+  return 'Ready';
+}
+
+function ProcessingBadge({ doc, onRetry }: { doc: Document; onRetry: (jobId: string) => void }) {
+  const text = stageText(doc);
+  const review = doc.lifecycle_state === 'ready' && !!doc.intelligence
+    && ['needs_review', 'pending'].includes(doc.intelligence.extraction_status ?? '');
+  const tone = text.startsWith('Failed') ? 'failed' : text === 'Ready' ? 'ready' : 'working';
+  const jobId = doc.processing?.job_id;
+  return <span className="proc-cell">
+    <span className={`proc-badge ${tone}`} title={doc.processing?.error_message ?? ''}>{tone === 'working' && <LoaderCircle size={12} className="spin" />}{text}</span>
+    {review && <span className="proc-badge review">Ready for review</span>}
+    {doc.processing?.retry_available && jobId && <button className="link-button" onClick={() => onRetry(jobId)}><RotateCcw size={13} /> Retry</button>}
+  </span>;
+}
+
+function LifecyclePanel({ doc, user, onChanged, onNotice }: { doc: DocumentDetail; user: User;
+  onChanged: (deleted: boolean) => Promise<void>; onNotice: (text: string) => void }) {
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const canManage = doc.owner_is_me || user.role === 'admin';
+  const canReindex = canManage || user.role === 'reviewer';
+  const load = useCallback(async () => {
+    try { setVersions((await api.versions(doc.id)).versions); setJobs(await api.documentJobs(doc.id)); } catch { /* reported elsewhere */ }
+  }, [doc.id]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!jobs.some(j => ACTIVE_JOB.has(j.status))) return;
+    const timer = window.setInterval(() => void load(), 2000);
+    return () => window.clearInterval(timer);
+  }, [jobs, load]);
+  const act = async (fn: () => Promise<unknown>, done: string, deleted = false) => {
+    setBusy(true);
+    try { await fn(); onNotice(done); await onChanged(deleted); if (!deleted) await load(); }
+    catch (exception) { onNotice((exception as Error).message); }
+    finally { setBusy(false); }
+  };
+  const confirmDelete = () => {
+    if (window.confirm(`Delete "${doc.title}"? It disappears from search immediately; its files and extracted data are purged.`))
+      void act(() => api.deleteDocument(doc.id), 'Document deleted.', true);
+  };
+  return <div className="drawer-section lifecycle">
+    <div className="drawer-section-heading"><h3>Lifecycle</h3><span className="small-counter">v{doc.current_version}</span></div>
+    <p className="muted-small">{stageText(doc)} · {doc.size_bytes ? `${(doc.size_bytes / 1024).toFixed(1)} KB` : 'size n/a'} · stored in {doc.storage_backend === 's3' ? 'private object storage' : 'local storage'}{doc.retention_until ? ` · retained until ${new Date(doc.retention_until).toLocaleDateString()}` : ''}</p>
+    <div className="lifecycle-actions">
+      {canReindex && <button className="button secondary small" disabled={busy} onClick={() => void act(() => api.reindex(doc.id), 'Re-indexing queued.')}><RefreshCw size={15} /> Re-index</button>}
+      {canManage && <>
+        <input type="file" hidden ref={input} accept=".txt,.md,.pdf,.docx,.xlsx" onChange={event => { const f = event.target.files?.[0]; if (f) void act(() => api.uploadVersion(doc.id, f), `New version of ${doc.title} uploaded.`); }} />
+        <button className="button secondary small" disabled={busy} onClick={() => input.current?.click()}><Upload size={15} /> New version</button>
+        <button className="button secondary small danger" disabled={busy} onClick={confirmDelete}><Trash2 size={15} /> Delete</button>
+      </>}
+    </div>
+    {versions.length > 1 && <div className="version-list"><h4><History size={14} /> Versions</h4>{versions.map(v => <div key={v.version} className="version-row">
+      <span>v{v.version} · {v.filename}</span><small>{v.state} · {new Date(v.created_at).toLocaleString()}</small>
+      <button className="link-button" title="Download this version" onClick={() => void api.download(`/api/documents/${doc.id}/versions/${v.version}/source`, v.filename).catch(e => onNotice((e as Error).message))}><ArrowDownToLine size={13} /></button>
+    </div>)}</div>}
+    {jobs.length > 0 && <div className="version-list"><h4><Activity size={14} /> Processing history</h4>{jobs.slice(0, 6).map(j => <div key={j.id} className="version-row">
+      <span>{j.type} · {j.status}{j.stage && ACTIVE_JOB.has(j.status) ? ` · ${STAGE_LABELS[j.stage] ?? j.stage}` : ''}</span>
+      <small>attempt {j.attempts}/{j.max_attempts}{j.error_code ? ` · ${j.error_code}` : ''}{j.updated_at ? ` · ${new Date(j.updated_at).toLocaleTimeString()}` : ''}</small>
+      {j.retry_available && <button className="link-button" title="Retry" onClick={() => void act(() => api.retryJob(j.id), 'Retry queued.')}><RotateCcw size={13} /></button>}
+    </div>)}</div>}
+  </div>;
+}
+
+function UploadModal({ user, onClose, onSuccess }: { user: User; onClose: () => void; onSuccess: (result: UploadResult) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [groups, setGroups] = useState<string[]>(user.groups.slice(0, 1));
@@ -343,11 +476,11 @@ function UploadModal({ token, user, onClose, onSuccess }: { token: string; user:
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!file || !groups.length) return;
     setWorking(true); setError('');
-    try { await api.upload(token, file, groups); onSuccess(); }
+    try { onSuccess(await api.upload(file, groups)); }
     catch (exception) { setError((exception as Error).message); }
     finally { setWorking(false); }
   }
-  return <div className="overlay modal-overlay" role="presentation" onClick={onClose}><form className="upload-modal" role="dialog" aria-modal="true" aria-label="Upload document" onClick={event => event.stopPropagation()} onSubmit={submit}><div className="drawer-header"><div className="eyebrow">DOCUMENT INGESTION</div><button type="button" title="Close" onClick={onClose}><X size={20} /></button></div><h2>Upload a document</h2><p className="subtext">Extract, chunk, index, and share with allowed groups.</p><input type="file" accept=".txt,.md,.pdf,.docx" hidden ref={input} onChange={event => setFile(event.target.files?.[0] ?? null)} /><button type="button" className="drop-zone" onClick={() => input.current?.click()}><CloudUpload size={34} /><strong>{file?.name ?? 'Choose a document'}</strong><span>{file ? `${(file.size / 1024).toFixed(1)} KB selected` : 'PDF (text), DOCX, TXT or MD · max 5 MB'}</span></button><label className="field-label">Authorized groups</label><div className="access-group-list">{user.groups.map(group => <label key={group}><input type="checkbox" checked={groups.includes(group)} onChange={event => setGroups(previous => event.target.checked ? [...previous, group] : previous.filter(item => item !== group))} /><span>{group}</span></label>)}</div><p className="permission-helper"><Shield size={15} /> Only group members and the uploader will be able to retrieve it.</p>{error && <div className="form-error"><CircleAlert size={16} />{error}</div>}<button className="button primary full" type="submit" disabled={working || !file || groups.length === 0}>{working ? 'Processing document...' : 'Index document'} <ArrowRight size={17} /></button></form></div>;
+  return <div className="overlay modal-overlay" role="presentation" onClick={onClose}><form className="upload-modal" role="dialog" aria-modal="true" aria-label="Upload document" onClick={event => event.stopPropagation()} onSubmit={submit}><div className="drawer-header"><div className="eyebrow">DOCUMENT INGESTION</div><button type="button" title="Close" onClick={onClose}><X size={20} /></button></div><h2>Upload a document</h2><p className="subtext">Stored privately, then parsed (OCR if needed), extracted, chunked and indexed in the background.</p><input type="file" accept=".txt,.md,.pdf,.docx,.xlsx" hidden ref={input} onChange={event => setFile(event.target.files?.[0] ?? null)} /><button type="button" className="drop-zone" onClick={() => input.current?.click()}><CloudUpload size={34} /><strong>{file?.name ?? 'Choose a document'}</strong><span>{file ? `${(file.size / 1024).toFixed(1)} KB selected` : 'PDF (text or scanned), DOCX, XLSX, TXT or MD · max 5 MB'}</span></button><label className="field-label">Authorized groups</label><div className="access-group-list">{user.groups.map(group => <label key={group}><input type="checkbox" checked={groups.includes(group)} onChange={event => setGroups(previous => event.target.checked ? [...previous, group] : previous.filter(item => item !== group))} /><span>{group}</span></label>)}</div><p className="permission-helper"><Shield size={15} /> Only group members and the uploader will be able to retrieve it.</p>{error && <div className="form-error"><CircleAlert size={16} />{error}</div>}<button className="button primary full" type="submit" disabled={working || !file || groups.length === 0}>{working ? 'Uploading…' : 'Upload document'} <ArrowRight size={17} /></button></form></div>;
 }
 
 export default App;

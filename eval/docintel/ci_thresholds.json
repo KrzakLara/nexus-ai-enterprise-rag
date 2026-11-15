@@ -1,0 +1,31 @@
+{
+  "_justification": "Regression floors for `python scripts/evaluate_docintel.py --ci` (Phase 3, full 32-document corpus, offline rules provider, real Tesseract). Each floor = the value measured on 2026-11-14 on dataset v1.1 (Docker image, tesseract 5.5.0) minus a margin of roughly one document or one field: F1 -0.03 (about 5 of 360 field slots), table / evidence rates -0.02, numeric reconciliation -0.08 (one of 14 invoices), classification -0.04 (one of 32 documents). OCR gets a wider margin (CER <= 0.03, key tokens >= 0.95) because CI installs the distribution's Tesseract, which can be a different 5.x release than the Docker image. Security is zero-tolerance: any authorization violation, any unprocessed document, any invalid document that validation lets through, or an unrefused stale review edit fails the gate. Thresholds may only be lowered with a written reason; they are not lowered to hide regressions.",
+  "measured": {
+    "field_f1_all": 0.9848,
+    "field_f1_test": 0.9709,
+    "evidence_support_rate": 1.0,
+    "evidence_reference_valid_rate": 1.0,
+    "line_item_cell_accuracy": 1.0,
+    "numeric_reconciliation_accuracy": 0.9286,
+    "classification_accuracy": 1.0,
+    "ocr_key_token_recall": 0.9917,
+    "approval_consistency": 1.0,
+    "ocr_mean_cer": 0.0015,
+    "validation_false_accept_rate": 0.0
+  },
+  "min": {
+    "field_f1_all": 0.95,
+    "field_f1_test": 0.94,
+    "evidence_support_rate": 0.98,
+    "evidence_reference_valid_rate": 0.98,
+    "line_item_cell_accuracy": 0.97,
+    "numeric_reconciliation_accuracy": 0.85,
+    "classification_accuracy": 0.96,
+    "ocr_key_token_recall": 0.95,
+    "approval_consistency": 0.96
+  },
+  "max": {
+    "ocr_mean_cer": 0.03,
+    "validation_false_accept_rate": 0.0
+  }
+}

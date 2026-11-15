@@ -1,0 +1,35 @@
+name: Load test (manual)
+# Expensive: runs only on demand. Results are only meaningful for the runner hardware they were
+# measured on (recorded in the report); they are not capacity claims.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: k6 profile
+        type: choice
+        options: [smoke, moderate, stress, sustained]
+        default: moderate
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: nexus-load
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and start the stack (OIDC + observability)
+        run: docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml up -d --build --wait --wait-timeout 900
+      - name: k6 ${{ inputs.profile }}
+        run: python scripts/run_load_test.py --profile ${{ inputs.profile }} --project nexus-load
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-${{ inputs.profile }}
+          path: eval/phase4/load/${{ inputs.profile }}.json

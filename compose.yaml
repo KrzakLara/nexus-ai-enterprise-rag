@@ -1,55 +1,186 @@
-# LOCAL DEMO ONLY. Do not expose these services to public networks.
+# NEXUS AI — LOCAL DEVELOPMENT / DEMO STACK. Do not expose these services to public networks.
+#
+#   docker compose up --build                                   demo auth (synthetic personas)
+#   docker compose -f compose.yaml -f compose.oidc.yaml up --build           + Keycloak (OIDC)
+#   docker compose -f compose.yaml -f compose.observability.yaml up --build  + Prometheus, Grafana, Jaeger
+#
+# Every credential below is a LOCAL-ONLY development default (override with environment
+# variables / an .env file). Production-oriented configuration: deploy/production.env.example
+# and docs/operations-runbook.md (AUTH_MODE=oidc, APP_ENV=production: the services refuse to
+# start with demo authentication, insecure cookies, local storage or a privileged DB role).
+#
+# Published ports are bound to 127.0.0.1 only. MinIO, the worker and all metrics endpoints are
+# NOT published to the host.
+
+x-db-admin: &db-admin postgresql+psycopg://nexus:${POSTGRES_PASSWORD:-demo_local_only}@db:5432/nexus
+x-storage-env: &storage-env
+  STORAGE_BACKEND: s3
+  S3_ENDPOINT_URL: http://minio:9000
+  S3_BUCKET: nexus-documents
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: ${S3_APP_ACCESS_KEY:-nexus-app}
+  S3_SECRET_ACCESS_KEY: ${S3_APP_SECRET_KEY:-nexus-app-local-only-secret}
+  S3_FORCE_PATH_STYLE: "true"
+  STORAGE_DIR: /app/data/uploads          # legacy v0.1-v0.3 local originals (read-only volume)
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-local}
+  AUTH_MODE: ${AUTH_MODE:-demo}
+  DEMO_MODE: ${DEMO_MODE:-true}
+  JWT_SECRET: ${JWT_SECRET:-nexus-local-demo-rotate-this-secret}
+  PROCESSING_MODE: queue
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+  EMBEDDING_MODEL: intfloat/multilingual-e5-small
+  EMBEDDING_DEVICE: cpu
+  LOG_FORMAT: json
+  METRICS_PORT: "9100"                    # internal only; scraped by Prometheus (observability overlay)
+  FRONTEND_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+  DB_REQUIRE_RLS_ROLE: "true"             # refuse to run as a superuser / BYPASSRLS role
+
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: nexus
-      POSTGRES_USER: nexus
-      POSTGRES_PASSWORD: demo_local_only
+      POSTGRES_USER: nexus                # migration / maintenance role (superuser); never used by api / worker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demo_local_only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-vector.sql:ro
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
       interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 20
+    deploy:
+      resources:
+        limits: {memory: 2g}
+
+  minio:
+    # MinIO (AGPLv3) for local S3-compatible storage. The upstream project no longer publishes
+    # community images; this is Chainguard's build from upstream source (RELEASE.2026-11-12),
+    # pinned by digest. Override with MINIO_IMAGE (see docs/object-storage-lifecycle.md).
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio@sha256:18c8fa28697b25e0f34c6faae171079e88a03efb8e76a21d3b5d07b4e3cbef3e}
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio-local-admin-secret}
+    volumes:
+      - minio_data:/data
+    deploy:
+      resources:
+        limits: {memory: 1g}
+
+  minio-init:
+    # One-shot: private bucket + a least-privilege access key for the application (bucket-scoped
+    # Get/Put/Delete/List only). Idempotent. The -dev variant of the client image has a shell.
+    image: ${MINIO_CLIENT_IMAGE:-cgr.dev/chainguard/minio-client@sha256:1f2e722c3a6761c537f760e49136c769dddc0cfe21819db0ce2600c1d0ac2c6a}
+    entrypoint: ["/bin/sh", "/init/minio-init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio-local-admin-secret}
+      S3_BUCKET: nexus-documents
+      S3_APP_ACCESS_KEY: ${S3_APP_ACCESS_KEY:-nexus-app}
+      S3_APP_SECRET_KEY: ${S3_APP_SECRET_KEY:-nexus-app-local-only-secret}
+    volumes:
+      - ./docker/minio:/init:ro
+    depends_on:
+      - minio
+    restart: "no"
+
+  migrate:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
+    # One-shot: Alembic migrations (incl. row-level security), LOGIN for the runtime roles, and the
+    # synthetic demo data (stored in MinIO, processed inline). Runs as the migration role only.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["sh", "-c", "python scripts/migrate.py && python scripts/provision_db_roles.py && python scripts/seed_demo.py"]
+    environment:
+      <<: [*app-env, *storage-env]
+      DATABASE_URL: *db-admin
+      DB_REQUIRE_RLS_ROLE: "false"        # the migration role is privileged by design
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-nexus-app-local-only}
+      DB_WORKER_PASSWORD: ${DB_WORKER_PASSWORD:-nexus-worker-local-only}
+      PROCESSING_MODE: inline
+    volumes:
+      - document_storage:/app/data:ro
+      - hf_models:/models
+    depends_on:
+      db: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    restart: "no"
 
   api:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
     build:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      DEMO_MODE: "true"
-      DATABASE_URL: postgresql+psycopg://nexus:demo_local_only@db:5432/nexus
-      STORAGE_DIR: /app/data/uploads
-      JWT_SECRET: ${JWT_SECRET:-nexus-local-demo-rotate-this-secret}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
-      EMBEDDING_MODEL: intfloat/multilingual-e5-small
-      EMBEDDING_DEVICE: cpu
+      <<: [*app-env, *storage-env]
+      SERVICE_NAME: nexus-api
+      DATABASE_URL: postgresql+psycopg://nexus_app:${DB_APP_PASSWORD:-nexus-app-local-only}@db:5432/nexus
     volumes:
-      - document_storage:/app/data
-      - model_cache:/models  # Hugging Face cache: the ~470 MB model downloads only once
+      - document_storage:/app/data:ro     # legacy local originals stay readable, never modified
+      - hf_models:/models
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     depends_on:
-      db:
-        condition: service_healthy
+      migrate: {condition: service_completed_successfully}
+    deploy:
+      resources:
+        limits: {memory: 3g}
+
+  worker:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
+    # Scale with: docker compose up --scale worker=2
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "backend.app.worker"]
+    environment:
+      <<: [*app-env, *storage-env]
+      SERVICE_NAME: nexus-worker
+      DATABASE_URL: postgresql+psycopg://nexus_worker:${DB_WORKER_PASSWORD:-nexus-worker-local-only}@db:5432/nexus
+      WORKER_DATABASE_URL: postgresql+psycopg://nexus_worker:${DB_WORKER_PASSWORD:-nexus-worker-local-only}@db:5432/nexus
+      WORKER_HEARTBEAT_FILE: /tmp/nexus-worker.alive
+    volumes:
+      - document_storage:/app/data:ro
+      - hf_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-m", "backend.app.worker", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    stop_grace_period: 60s                # SIGTERM: finish the current job, then exit
+    deploy:
+      resources:
+        limits: {memory: 3g}
 
   frontend:
     build:
       context: ./frontend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: ""               # same-origin: /api is proxied by Vite (cookie sessions)
+      VITE_PROXY_TARGET: http://api:8000
     ports:
-      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - api
 
 volumes:
   postgres_data:
-  document_storage:
-  model_cache:
+  document_storage:   # v0.1-v0.3 local originals (read-only since Phase 4; see scripts/storage_backfill.py)
+  minio_data:
+  hf_models:          # Hugging Face cache (the ~470 MB embedding model downloads once)

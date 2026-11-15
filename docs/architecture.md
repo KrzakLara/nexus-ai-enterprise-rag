@@ -1,6 +1,6 @@
 # Architecture and design decisions
 
-**Current release:** v0.2-dev (Phase 2d). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
+**Current release:** v0.3.0 release candidate (Phases 1–3: MVP, advanced hybrid RAG, document intelligence: layout-aware parsing, OCR, structured extraction, validation, human review, multi-document analysis; see ADR-013). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
 
 ## Context and goals
 
@@ -36,7 +36,7 @@ flowchart LR
   API --> Files[Original-file storage]
 ```
 
-Data plane: upload parses documents synchronously and stores a checksum, document metadata, source text chunks, field evidence and a local copy of the original. It then embeds the new chunks with the local model (PostgreSQL only). Retrieval only reads chunks the user is authorized for: the ACL subquery sits in the same SQL statement as BM25 candidate loading or the vector `ORDER BY ... LIMIT k`. In keyless mode, the backend returns annotated source excerpts. With an API key, it calls an LLM with these authorized excerpts and verifies that cited source IDs exist.
+Data plane: upload parses documents synchronously within the request (in FastAPI's worker threadpool, so the event loop keeps serving other requests; there is no background queue yet) and stores a checksum, document metadata, source text chunks, field evidence and a local copy of the original. It then embeds the new chunks with the local model (PostgreSQL only). Retrieval only reads chunks the user is authorized for: the ACL subquery sits in the same SQL statement as BM25 candidate loading or the vector `ORDER BY ... LIMIT k`. In keyless mode, the backend quotes query-selected sentences of the authorized hits verbatim. With an API key, it calls an LLM with these authorized excerpts and verifies that cited source IDs exist. If the call fails or the citations cannot be verified, the model text is discarded and the verbatim quotes are returned instead (`provider_error` / `citation_validation_failed`).
 
 Control plane: users have a tenant, an assigned role and a list of groups. A document has an owner, tenant and explicit grants. Visibility = same tenant AND (admin OR owner OR share-group match). A document with no grants is not publicly visible. For security testing, a separate Otherco tenant has a unique budget codename.
 
@@ -48,9 +48,9 @@ Retrieval is implemented as an authorized `Document.id` subquery joined to `Chun
 
 This demo filters at the application SQL layer. It does not implement database Row-Level Security, external authorization services, hardened secret handling or a certified compliance boundary. Test the ACL invariants before any semantic-search migration.
 
-## ADR-002: Inspectable lexical baseline first (still the default mode)
+## ADR-002: Inspectable lexical baseline first (default only on SQLite)
 
-The lexical path is still a small in-process BM25 scorer. It caps retrieval at 2,000 authorized chunks, ordered by document ID rather than relevance, and is **not suitable for a large corpus**. PostgreSQL FTS (`tsvector` + GIN) will replace it in v0.2b.
+The v0.1 lexical path is a small in-process BM25 scorer. It caps retrieval at 2,000 authorized chunks, ordered by document ID rather than relevance, and is **not suitable for a large corpus**. PostgreSQL FTS (`tsvector` + GIN, ADR-008) replaced it as the scalable lexical branch in v0.2b. BM25 is kept as a measured baseline (`mode=bm25`). Since v0.2.0 it is the default only on SQLite; on PostgreSQL a request without `mode` uses `hybrid`.
 
 ## ADR-005: Exact, permission-scoped vector search before ANN
 
@@ -78,7 +78,7 @@ Security test: `test_unauthorized_documents_never_returned_even_when_semanticall
 - Storage: `chunk_embeddings(chunk_id, model_name)` primary key, `vector(384)`, `model_revision` (Hugging Face commit hash), `embedding_dim` (CHECK = 384), `normalized`, `content_sha256`, `created_at`. Deleting a chunk cascades to its embeddings.
 - Idempotency: a chunk is embedded only when it has no row for the configured model or when its `content_sha256` differs from the stored one. Backfill and seeding can be re-run safely.
 - No fake vectors: load errors, wrong dimensions, NaN or unnormalized output raise `EmbeddingError`. Upload keeps the document and reports `embedding_status: failed`, and the backfill retries later.
-- The model loads lazily in the API process, so the first semantic query after start pays the load time (~10 s measured in Docker with a warm cache).
+- The model is loaded once per API process. Since v0.2.0 the API loads it at startup in a worker thread (`EMBEDDING_WARMUP=true`, PostgreSQL only), so the first semantic query does not pay the cold start (~15 s measured by `scripts/evaluate.py` on the dev machine). A failed load is logged and does not stop the API; semantic and hybrid then return HTTP 503.
 
 ## ADR-008: PostgreSQL full-text search with the `simple` configuration
 
@@ -174,11 +174,31 @@ A `Source` contains `document_id`, `chunk_id`, `page`, `excerpt` (the first 800 
 
 Text-only PDFs preserve page numbers. DOCX and TXT are treated as a single logical page in v0.1; exact Word pagination is not reconstructed. Scanned PDF OCR, page bounding boxes, merged cells and spreadsheet tables are future work.
 
-## ADR-004: Local demo authentication is not enterprise SSO
+## ADR-004: Local demo authentication is not enterprise SSO (superseded in Phase 4 by ADR-014)
 
-The seed script creates five synthetic users. They log in with a shared demo password and short-lived HS256 JWTs. Only a local network is in scope; Docker binds exposed services to `127.0.0.1`. This is **NOT** production authentication, and **must not be publicly deployed**.
+The seed script creates synthetic users that log in with a shared demo password. Since Phase 4 this
+is `AUTH_MODE=demo`, allowed only in local / development / test environments and refused
+elsewhere at startup.
 
-Planned production auth: OIDC Authorization Code + PKCE; validate issuer, audience, signature and session expiry; trusted server-side group mappings; break-glass policies; secret rotation; rate limiting; tenant-scoped RLS where appropriate.
+## ADR-014: OIDC through a backend-for-frontend (Phase 4)
+
+OpenID Connect Authorization Code + PKCE is handled by the API; the browser holds only an HttpOnly
+session cookie. Tokens are validated strictly (asymmetric allowlist, JWKS rotation, iss / aud /
+azp / nonce / time claims) and tenant authority comes from IdP group paths under a server-side
+tenant allowlist, bound once per identity. Details: [authentication-oidc.md](authentication-oidc.md).
+
+## ADR-015: Row-level security as a second enforcement of the ACL (Phase 4)
+
+The application ACL stays in every query; PostgreSQL RLS (FORCE) enforces the same rule for the
+runtime roles `nexus_app` / `nexus_worker`, with a transaction-local security context and a worker
+job scope. Details: [postgresql-rls.md](postgresql-rls.md).
+
+## ADR-016: Durable jobs in PostgreSQL, originals in S3 (Phase 4)
+
+Heavy processing moved to background workers behind a PostgreSQL queue (job row in the same
+transaction as the upload: no outbox relay), originals moved to S3-compatible storage with a staged
+deletion lifecycle. Details: [background-processing.md](background-processing.md),
+[object-storage-lifecycle.md](object-storage-lifecycle.md).
 
 ## Threat model and negative tests
 
@@ -196,6 +216,18 @@ Planned production auth: OIDC Authorization Code + PKCE; validate issuer, audien
 | Malicious instructions in retrieved content | Prompt treats all source text as data | Prompt-only mitigation is insufficient; red-team tests next |
 | Spoofed identity on public network | Docker loopback binding; refuses non-demo mode | Replace auth entirely for real deployment |
 | Decompression bombs / hostile Office or PDF | Basic size/page caps | Not sandboxed; parser isolation/scanning planned |
+
+## ADR-013: Document intelligence as modules of the same monolith (Phase 3)
+
+Parsing, OCR, extraction, validation, review and comparison live in `backend/app/docintel/` and in one router (`docintel_api.py`). They share the database, the ACL (`authorized_documents`), the audit trail and the deployment with the RAG. There are no new services, queues or vector stores. Full description: [document-intelligence.md](document-intelligence.md), [human-review.md](human-review.md).
+
+- **One normalized structure** (`structure.py`) for every format. Page texts derived from it feed the unchanged Phase 2 chunker, so retrieval, chunk page numbers and citations keep working. For text-layer PDFs the page text is byte-identical to the v0.2 parser's, which a test checks.
+- **Lightweight parsing stack** (pdfplumber, pypdfium2, Tesseract, python-docx, openpyxl) instead of Docling. Docling resolved to 110 extra packages plus model downloads; the parser interface keeps it swappable.
+- **OCR with explicit pre-processing:** deskew, ruling-line removal and a lattice table rebuild. On the scanned test invoice, OCR on the raw raster destroyed the table (CER 0.27, key tokens 0.57); with pre-processing the evaluation measures the values in [extraction-evaluation-results.md](extraction-evaluation-results.md).
+- **Deterministic offline extraction by default.** An optional LLM provider is constrained by a strict JSON schema and verbatim evidence, and is never a silent fallback.
+- **Evidence and validation before trust:** grounding (exact / normalized string matching, no probabilities) and Decimal business rules produce field-level issues. Nothing is auto-corrected.
+- **Human review** with optimistic locking, an append-only history and corrections stored next to the original values.
+- **New tables only** (Alembic `0004_document_intelligence`): `document_processing`, `document_tables`, `extractions`, `extraction_fields`, `review_events`. Phase 1/2 tables and IDs are unchanged.
 
 ## Target production architecture (planned; not current)
 
@@ -226,8 +258,9 @@ flowchart TD
 1. **v0.2b (done):** PostgreSQL FTS (`simple`, GIN), hybrid RRF, four API/UI modes with diagnostics, PostgreSQL security tests.
 1. **v0.2c (done):** 100-question chunk-level evaluation, four-mode benchmark with CIs, RRF ablation, calibrated evidence-sufficiency policy, citation and security evaluation, CI gates, evaluation UI.
 1. **v0.2d (done):** query-aware extractive answers, sentence-level evidence policy, embedder comparison (e5-small kept). Deferred: query translation / expansion, LLM answer evaluation, chunk-size ablation.
-2. **v0.3 — document AI:** Docling/OCR, table extraction, layout-aware chunking, Pydantic schema extraction, confidence + human review.
-3. **v0.4 — governance:** OIDC, Postgres RLS, signed document links, async jobs, per-tenant observability, source deletion and permission-change reindexing.
+1. **v0.2.0 (release):** PDF/DOCX and upload tests, complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid default on PostgreSQL.
+2. **v0.3 — document AI (implemented on the Phase 3 branch, not released):** layout-aware parsing, Tesseract OCR with deskew + table lattice, Pydantic schema extraction (rules + optional LLM), grounding, validation, human review, multi-document comparison, a 32-document evaluation with CI gates. Not done: layout-aware chunking (chunks still come from page text), Docling.
+3. **v0.4 — enterprise hardening (implemented on the Phase 4 branch, stacked on v0.3):** OIDC (BFF, Keycloak locally), PostgreSQL RLS, durable workers, S3 storage with versions / deletion / retention, presigned links, structured logs / metrics / traces, security, resilience and load testing ([enterprise-hardening.md](enterprise-hardening.md)). Not done: ANN indexes, reranking, per-tenant cost dashboards, HA / multi-region.
 4. **v1.0 — engineering evidence:** retrieval and answer eval suite, injection tests, load benchmarks, latency/cost dashboards, threat model and demo video.
 
 ## What to measure

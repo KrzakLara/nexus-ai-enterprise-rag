@@ -141,9 +141,12 @@ def select_evidence(question: str, hits: list[Hit], embedder: PassageQueryEmbedd
     return chosen
 
 
-def render_extractive_answer(snippets: list[Snippet]) -> str:
+def render_extractive_answer(snippets: list[Snippet], fallback: bool = False) -> str:
+    """Verbatim quotes with [S#]. `fallback=True`: an LLM is configured but its answer was not used."""
     lines = [f"[S{s.source_index}] {s.hit.document_title}, page {s.hit.page_number}: {display(s.sentence)}"
              for s in snippets]
+    if fallback:
+        return "\n\n".join(lines)
     return ("Evidence-first offline answer (verbatim quotes, no LLM key configured):\n\n"
             + "\n\n".join(lines)
             + "\n\nAdd OPENAI_API_KEY to generate a synthesized answer from these authorized sources.")

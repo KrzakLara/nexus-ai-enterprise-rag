@@ -1,0 +1,74 @@
+# Example alert rules (evaluated by the local Prometheus; no Alertmanager is configured).
+# Thresholds are starting points for a demo-scale deployment, not tuned production SLOs.
+groups:
+  - name: nexus-ai
+    rules:
+      - alert: NexusApiHighErrorRate
+        expr: |
+          sum(rate(nexus_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(nexus_http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: More than 5 % of API requests fail with 5xx
+
+      - alert: NexusApiSlowRequests
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(nexus_http_request_duration_seconds_bucket{route!~"/api/health.*"}[5m]))) > 2
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: p95 API latency above 2 s
+
+      - alert: NexusQueueBacklog
+        expr: sum(nexus_jobs_queue_depth{status=~"queued|retrying"}) > 50
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: More than 50 background jobs are waiting
+
+      - alert: NexusOldestJobWaiting
+        expr: max(nexus_jobs_oldest_age_seconds{status="queued"}) > 900
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: A queued job has waited more than 15 minutes (are workers running?)
+
+      - alert: NexusDeadLetteredJobs
+        expr: increase(nexus_job_failures_total[30m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: Background jobs ended in `failed` (inspect GET /api/jobs?status=failed)
+
+      - alert: NexusWorkerDown
+        expr: absent(up{job="nexus-worker"} == 1)
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: No background worker is being scraped
+
+      - alert: NexusAuthFailureSpike
+        expr: sum(rate(nexus_auth_failures_total[5m])) > 1
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: Sustained authentication failures (credential stuffing or misconfiguration)
+
+      - alert: NexusDatabasePoolExhausted
+        expr: increase(nexus_db_pool_timeouts_total[5m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: Requests were shed with 503 because every database connection was busy (saturation)
+
+      - alert: NexusRequestDeadlineExceeded
+        expr: increase(nexus_http_request_deadline_exceeded_total[5m]) > 0
+        labels: {severity: page}
+        annotations:
+          summary: Requests were answered 503 after REQUEST_TIMEOUT_SECONDS (a dependency hangs)
+
+      - alert: NexusObjectStorageErrors
+        expr: sum(rate(nexus_object_storage_operations_total{outcome="error"}[5m])) > 0
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: Object storage operations are failing

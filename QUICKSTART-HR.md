@@ -1,11 +1,11 @@
 # NEXUS AI — kako ga pokrenuti
 
-Ovo je početna verzija portfolio projekta za Applied AI / AI Engineer pozicije.
+Verzija v0.2.0 portfolio projekta za Applied AI / AI Engineer pozicije (lokalni demo, nije production-ready).
 
 ## Najlakše: Docker Desktop
 
 1. Instaliraj i pokreni Docker Desktop.
-2. Raspakiraj `NEXUS-AI-Starter.zip` i otvori tu mapu u VS Codeu.
+2. Kloniraj repozitorij i otvori njegovu mapu u VS Codeu.
 3. U terminalu, u glavnoj mapi projekta, pokreni:
 
    ```bash
@@ -27,7 +27,7 @@ U terminalu 1, iz glavne mape:
 pip install uv
 uv sync --locked --extra dev
 .venv\Scripts\Activate.ps1
-python scripts/seed_demo.py --skip-embeddings   # SQLite mod: samo lexical
+python scripts/seed_demo.py --skip-embeddings   # SQLite mod: samo bm25
 uvicorn backend.app.main:app --reload
 ```
 
@@ -44,7 +44,7 @@ Zatim otvori http://localhost:5173.
 ## Prvi testovi
 
 ```bash
-python -m pytest -q        # bez PostgreSQL-a: 122 prolazi, 41 preskočeno
+python -m pytest -q        # bez PostgreSQL-a: 168 prolazi, 52 preskočeno (s PostgreSQL-om svih 220 prolazi)
 python scripts/evaluate_retrieval.py
 ```
 

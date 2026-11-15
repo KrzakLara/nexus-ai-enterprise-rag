@@ -10,6 +10,7 @@ Exit code 1 if any scenario does not behave as documented. KNOWN = documented li
 """
 import argparse
 import json
+import sys
 import urllib.request
 
 PASSWORD = "DemoPass123!"
@@ -50,6 +51,10 @@ def show(title, body):
 
 
 def main() -> int:
+    # Quotes contain Croatian letters (č, ž, ...): a Windows console defaults to cp1252 and would
+    # raise UnicodeEncodeError mid-run, so force UTF-8 output.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--api", default="http://localhost:8000")
     api = Api(parser.parse_args().api)

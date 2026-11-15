@@ -5,6 +5,10 @@
   "_test" (it is DROPPED and re-created by the test session). Example:
       TEST_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_test
   Without it, every "postgres" parametrization is reported as SKIPPED.
+
+Phase 4: on PostgreSQL the API under test connects as the RUNTIME role `nexus_app` and inline jobs
+run as `nexus_worker` (both NOSUPERUSER, NOBYPASSRLS), so every Phase 1-3 API test also runs with
+row-level security enforced. Seeding and assertions keep using the admin (migration) engine.
 """
 import os
 
@@ -16,12 +20,17 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.auth import hash_password
 from backend.app.database import Base, get_db
+from backend.app.db_roles import provision_roles, runtime_url
+from backend.app.lifecycle import get_worker_sessions
 from backend.app.main import app
 from backend.app.migrate import migrate
 from backend.app.models import Chunk, Document, DocumentGrant, User
 
 PG_URL = os.getenv("TEST_DATABASE_URL", "")
-TABLES = "chunk_embeddings, audit_events, chunks, document_grants, documents, users"
+TABLES = ("chunk_embeddings, audit_events, chunks, document_grants, document_versions, processing_jobs, "
+          "auth_sessions, user_identities, auth_login_states, worker_heartbeats, documents, users")
+RUNTIME_PASSWORD = "test-runtime-only-1"
+RUNTIME = {}  # admin engine id -> (app engine, worker engine)
 
 
 def recreate_pg_database(url: str) -> str:
@@ -39,15 +48,59 @@ def recreate_pg_database(url: str) -> str:
     return parsed.render_as_string(hide_password=False)
 
 
+def runtime_engines(admin_engine, url: str):
+    """(app engine, worker engine) connecting as nexus_app / nexus_worker to the same database."""
+    key = id(admin_engine)
+    if key not in RUNTIME:
+        provision_roles(admin_engine, RUNTIME_PASSWORD, RUNTIME_PASSWORD)
+        RUNTIME[key] = (create_engine(runtime_url(url, "nexus_app", RUNTIME_PASSWORD)),
+                        create_engine(runtime_url(url, "nexus_worker", RUNTIME_PASSWORD)))
+    return RUNTIME[key]
+
+
 @pytest.fixture(scope="session")
-def pg_engine():
+def pg_url():
     if not PG_URL:
         pytest.skip("TEST_DATABASE_URL not set (PostgreSQL + pgvector integration tests)")
+    # One test session per disposable database: a second concurrent pytest run would TRUNCATE
+    # tables under the first one's open transactions and both would block. Fail fast instead.
+    from sqlalchemy.engine import make_url
+
+    target = make_url(PG_URL)
+    guard = create_engine(target.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    conn = guard.connect()
+    if not conn.execute(text("SELECT pg_try_advisory_lock(hashtext(:k))"),
+                        {"k": f"nexus-pytest:{target.database}"}).scalar():
+        conn.close()
+        guard.dispose()
+        pytest.exit(f"another test session is already using {target.database!r}; refusing to run concurrently",
+                    returncode=3)
     url = recreate_pg_database(PG_URL)
     migrate(url)  # the real Alembic migrations, not create_all()
-    engine = create_engine(url)
+    yield url
+    conn.close()  # releases the session-level advisory lock
+    guard.dispose()
+
+
+@pytest.fixture(scope="session")
+def pg_engine(pg_url):
+    engine = create_engine(pg_url)
+    runtime_engines(engine, pg_url)
     yield engine
+    for app_engine, worker_engine in RUNTIME.values():
+        app_engine.dispose()
+        worker_engine.dispose()
     engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def app_engine(pg_engine):
+    return RUNTIME[id(pg_engine)][0]
+
+
+@pytest.fixture(scope="session")
+def worker_engine(pg_engine):
+    return RUNTIME[id(pg_engine)][1]
 
 
 @pytest.fixture(scope="session")
@@ -68,9 +121,13 @@ def db_engine(request):
         engine.dispose()
     else:
         engine = request.getfixturevalue("pg_engine")
-        with engine.begin() as conn:
-            conn.execute(text(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE"))
+        truncate(engine)
         yield engine
+
+
+def truncate(engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE"))
 
 
 PEOPLE = [
@@ -78,6 +135,8 @@ PEOPLE = [
     ("finance@northstar.demo", "northstar", "member", ["finance"]),
     ("admin@northstar.demo", "northstar", "admin", ["hr", "finance"]),
     ("finance@otherco.demo", "otherco", "member", ["finance"]),
+    ("reviewer@northstar.demo", "northstar", "reviewer", ["finance"]),  # u4: Phase 3 review rights
+    ("reviewer@otherco.demo", "otherco", "reviewer", ["finance"]),      # u5
 ]
 DOCS = [
     ("d_hr", "northstar", "u0", "Compensation policy", ["hr"],
@@ -99,7 +158,8 @@ def seed(factory, docs=DOCS, people=PEOPLE):
         for doc_id, tenant, owner, title, groups, body in docs:
             db.add(Document(id=doc_id, tenant_id=tenant, owner_id=owner,
                             title=title, filename=doc_id + ".txt", storage_key=doc_id + ".txt",
-                            sha256="0" * 64, page_count=1, extracted_fields={}))
+                            sha256="0" * 64, page_count=1, extracted_fields={},
+                            lifecycle_state="ready"))
             db.flush()
             db.add(Chunk(id=doc_id + "_c0", document_id=doc_id,
                          page_number=1, position=0, content=body))
@@ -108,16 +168,32 @@ def seed(factory, docs=DOCS, people=PEOPLE):
         db.commit()
 
 
+def api_factories(factory):
+    """(API session factory, inline-worker session factory) for a test's admin factory: on
+    PostgreSQL the runtime roles (RLS enforced), on SQLite the same factory."""
+    bind = factory.kw["bind"]
+    if bind.dialect.name == "postgresql":
+        for key, (app_e, worker_e) in RUNTIME.items():
+            if app_e.url.database == bind.url.database:
+                return (sessionmaker(app_e, expire_on_commit=False),
+                        sessionmaker(worker_e, expire_on_commit=False))
+    return factory, factory
+
+
 def make_client(factory):
+    api_factory, worker_factory = api_factories(factory)
+
     def override_db():
-        with factory() as db:
+        with api_factory() as db:
             yield db
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_worker_sessions] = lambda: worker_factory
     client = TestClient(app)  # no lifespan: never touches the normal file-backed database
 
     def token(email: str):
         response = client.post("/api/auth/login", json={"email": email, "password": "TestPass123!"})
         assert response.status_code == 200, response.text
+        client.cookies.clear()  # bearer-token clients; cookie sessions are tested separately
         return {"Authorization": "Bearer " + response.json()["access_token"]}
     return client, token
 

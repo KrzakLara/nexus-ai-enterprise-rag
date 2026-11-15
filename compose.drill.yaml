@@ -1,0 +1,13 @@
+# Overlay for failure-injection drills (scripts/resilience_drill.py) on a DISPOSABLE project:
+# short leases so a killed worker's job is recovered within seconds, frequent heartbeats.
+#   docker compose -p nexus-p4 -f compose.yaml -f compose.oidc.yaml -f compose.drill.yaml up -d
+services:
+  worker:
+    environment:
+      JOB_LEASE_SECONDS: "20"
+      JOB_HEARTBEAT_SECONDS: "5"
+      WORKER_POLL_SECONDS: "0.5"
+  api:
+    environment:
+      JOB_LEASE_SECONDS: "20"
+      REQUEST_TIMEOUT_SECONDS: "10"   # a hanging dependency is answered 503 well before the drill's 30 s client timeout

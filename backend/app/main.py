@@ -1,63 +1,144 @@
-"""NEXUS AI API: a local, inspectable enterprise document intelligence vertical slice.
+"""NEXUS AI API: enterprise document intelligence with permission-scoped hybrid RAG.
 
-WARNING: demo auth is intentionally NOT suitable for internet-facing deployment.
+Phase 4 (enterprise hardening): OIDC authentication with server-side sessions (AUTH_MODE=oidc)
+next to the explicitly local demo mode, PostgreSQL row-level security below the application ACL,
+durable background processing, S3-compatible object storage with a full document lifecycle,
+structured logs, Prometheus metrics and OpenTelemetry traces. See docs/enterprise-hardening.md.
 """
+import logging
 from contextlib import asynccontextmanager
-from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from anyio import create_task_group, move_on_after, to_thread
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeout
+from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import current_user, make_token, verify_password
-from .config import settings
-from .database import engine, get_db
+from . import lifecycle
+from .auth import current_user
+from .config import assert_secure_configuration, settings
+from .database import assert_runtime_role, engine, get_db, probe_engine, worker_engine
+from .docintel.ocr import ocr_available
+from .docintel.parsing import parse_document
+from .docintel_api import router as docintel_router
+from .docintel_api import summary as intelligence_summary
 from .embeddings import Embedder, EmbeddingError, get_embedder
 from .evidence import EvidencePolicy, assess
 from .extractive import select_evidence
-from .indexing import embed_pending_chunks
-from .migrate import assert_schema_current
-from .models import AuditEvent, Chunk, Document, DocumentGrant, User
-from .parsers import extract_contract_fields, extract_pages, split_page
+from .identity.routes import router as auth_router
+from .identity.routes import user_view
+from .jobs import queue
+from .lifecycle_api import router as lifecycle_router
+from .lifecycle_api import stream_object
+from .migrate import assert_schema_current, current_revision, head_revision
+from .models import AuditEvent, Chunk, Document, DocumentGrant, ProcessingJob, User, WorkerHeartbeat
+from .observability.logging import configure_logging
+from .observability.metrics import (DB_POOL, DB_POOL_TIMEOUTS, QUEUE_DEPTH, RAG_DURATION, RETRIEVAL_DURATION,
+                                    register_collectors, start_metrics_server)
+from .observability.middleware import RequestContextMiddleware, RequestDeadlineMiddleware
+from .observability.tracing import init_tracing, span
 from .rag import answer
 from .retrieval import RetrievalMode, RetrievalUnavailable, retrieve
 from .security import audit, authorized_documents, permitted_document
+from .storage import StorageError, default_store
+from .uploads import UploadRejected, validate_upload
+
+log = logging.getLogger("nexus")
+
+
+def warm_up_embedder() -> str:
+    """Load the embedding model and embed one probe query, so the first user request does not pay
+    the ~15 s cold start. A failure is reported, not fatal: semantic/hybrid then answer HTTP 503."""
+    try:
+        get_embedder().embed_query("warm-up probe")
+        return "loaded"
+    except EmbeddingError as exc:
+        log.warning("Embedding model warm-up failed: %s", exc)
+        return f"failed: {str(exc)[:160]}"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if not settings.demo_mode:
-        raise RuntimeError("Production identity/SSO is NOT implemented. Run only in local DEMO_MODE.")
+    configure_logging(settings.service_name, settings.app_env, settings.log_level, settings.log_format)
+    # Fail closed: demo credentials can never activate in a production-like environment, and OIDC
+    # mode refuses to start without issuer / client / redirect / session key configuration.
+    assert_secure_configuration(settings)
     # Schema is owned by Alembic (python scripts/migrate.py); fail fast instead of create_all().
     assert_schema_current(engine)
-    settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    role = assert_runtime_role(engine, settings.db_require_rls_role)
+    if settings.storage_backend == "local":
+        settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    elif settings.s3_create_bucket:
+        default_store(settings).ensure_bucket()
+    register_collectors()
+    DB_POOL.register("api", engine)
+    if settings.worker_database_url:
+        DB_POOL.register("worker", worker_engine())
+    sessions = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def queue_stats():
+        with sessions() as db:
+            return queue.queue_stats(db)
+
+    QUEUE_DEPTH.set_source(queue_stats)
+    start_metrics_server(settings.metrics_port)
+    init_tracing(settings, settings.service_name, app=app, engines=[engine])
+    log.info("api_started", extra={"event": "api_started", "auth_mode": settings.auth_mode,
+                                   "processing_mode": settings.processing_mode,
+                                   "storage_backend": settings.storage_backend,
+                                   "db_role": (role or {}).get("name")})
+    if settings.embedding_warmup and engine.dialect.name == "postgresql":
+        # In a worker thread: the event loop is not blocked while the model loads.
+        await to_thread.run_sync(warm_up_embedder)
     yield
 
 
 app = FastAPI(
     title="NEXUS AI — Enterprise Knowledge Intelligence",
-    description="Secure-by-query RAG baseline with verifiable document evidence (LOCAL DEMO ONLY)",
-    version="0.2.0.dev0",
+    description="Permission-scoped hybrid RAG and document intelligence with verifiable evidence",
+    version=settings.service_version,
     lifespan=lifespan,
 )
+app.include_router(auth_router)
+app.include_router(docintel_router)
+app.include_router(lifecycle_router)
+# innermost: the 503 of the deadline passes through CORS and the request log / metrics
+app.add_middleware(RequestDeadlineMiddleware, seconds=settings.request_timeout_seconds)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origins=list(settings.frontend_origins),
+    allow_credentials=True,  # cookie sessions from the configured frontend origins only
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestContextMiddleware)
 
 
-class LoginIn(BaseModel):
-    email: str
-    password: str
+@app.exception_handler(OperationalError)
+async def database_unavailable(request: Request, exc: OperationalError):
+    """Connection-level database failures are a temporary outage (503), never a 500 with details."""
+    log.warning("database_unavailable", extra={"event": "database_unavailable",
+                                               "error_type": type(getattr(exc, "orig", exc)).__name__})
+    return JSONResponse({"detail": "The database is temporarily unavailable; please retry."}, status_code=503,
+                        headers={"Retry-After": "5"})
+
+
+@app.exception_handler(PoolTimeout)
+async def database_pool_exhausted(request: Request, exc: PoolTimeout):
+    """Every pooled connection stayed busy for DB_POOL_TIMEOUT_SECONDS: the API is saturated.
+    Shed the request (503 + Retry-After) instead of failing it with a 500 (found under load)."""
+    DB_POOL_TIMEOUTS.inc()
+    log.warning("database_pool_exhausted", extra={"event": "database_pool_exhausted"})
+    return JSONResponse({"detail": "The service is busy; please retry shortly."}, status_code=503,
+                        headers={"Retry-After": "2"})
 
 
 EVIDENCE_POLICY = EvidencePolicy(
@@ -75,12 +156,19 @@ class RRFWeights(BaseModel):
     semantic: float = Field(default=settings.rrf_weight_semantic, ge=0, le=10)
 
 
+def default_retrieval_mode(dialect: str) -> RetrievalMode:
+    """Mode used when a request omits `mode`: hybrid where it is available (PostgreSQL), else the
+    bm25 baseline (SQLite). The UI makes the same choice from /api/health."""
+    return "hybrid" if dialect == "postgresql" else "bm25"
+
+
 class AskIn(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=10)
-    # bm25 = in-process Python BM25 baseline (default when omitted, v0.1 behaviour)
-    # lexical = PostgreSQL FTS | semantic = pgvector cosine | hybrid = FTS + semantic + RRF
-    mode: RetrievalMode = "bm25"
+    # bm25 = in-process Python BM25 baseline | lexical = PostgreSQL FTS
+    # semantic = pgvector cosine | hybrid = FTS + semantic + RRF
+    # Omitted: default_retrieval_mode() (hybrid on PostgreSQL, bm25 on SQLite)
+    mode: RetrievalMode | None = None
     candidates: int = Field(default=settings.retrieval_candidates, ge=1, le=200)  # hybrid only
     weights: RRFWeights = Field(default_factory=RRFWeights)  # hybrid only
     # semantic / hybrid: withhold candidates and answer no_evidence when evidence is insufficient
@@ -92,45 +180,134 @@ def home():
     return RedirectResponse(url="/docs")
 
 
+# ----------------------------------------------------------------------------- health
+
 @app.get("/api/health")
 def health():
+    """Public capability summary for the UI (no hostnames, credentials or error details)."""
     return {
         "status": "ok",
-        "mode": "local_demo",
+        "mode": "local_demo" if settings.demo_auth else "oidc",
+        "auth_mode": settings.auth_mode,
+        "processing_mode": settings.processing_mode,
+        "storage_backend": settings.storage_backend,
         "version": app.version,
         "database": engine.dialect.name,
         "semantic_retrieval": engine.dialect.name == "postgresql",
         "retrieval_modes": (["bm25", "lexical", "semantic", "hybrid"]
                             if engine.dialect.name == "postgresql" else ["bm25"]),
+        "default_retrieval_mode": default_retrieval_mode(engine.dialect.name),
         "embedding_model": settings.embedding_model,
+        "embedding_model_loaded": get_embedder().is_loaded,
+        "ocr_available": ocr_available(),
+        "document_formats": ["pdf", "pdf (scanned, OCR)", "docx", "xlsx", "txt", "md"],
     }
 
 
-@app.post("/api/auth/login")
-def login(payload: LoginIn, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == payload.email.lower().strip()))
-    if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(401, "Invalid credentials")
-    return {
-        "access_token": make_token(user),
-        "token_type": "bearer",
-        "user": {
-            "email": user.email,
-            "groups": user.groups,
-            "role": user.role,
-            "tenant": user.tenant_id,
-        },
-    }
+@app.get("/api/health/live")
+def liveness():
+    """The process is running and serving HTTP. Never touches dependencies (no restart loops
+    because the database is briefly unavailable)."""
+    return {"status": "alive"}
 
+
+def _database_probe(bind) -> dict[str, str]:
+    checks: dict[str, str] = {}
+    probe = probe_engine(bind)
+    try:
+        with probe.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            checks["database"] = "ok"
+            try:
+                checks["schema"] = "ok" if current_revision(probe) == head_revision() else "outdated"
+            except Exception:  # noqa: BLE001
+                checks["schema"] = "unavailable"
+            if settings.processing_mode == "queue":
+                try:
+                    cutoff = lifecycle.now_utc().timestamp() - settings.worker_stale_seconds
+                    beats = conn.execute(select(WorkerHeartbeat.last_seen_at)).scalars().all()
+                    fresh = [b for b in beats if lifecycle._aware(b).timestamp() >= cutoff]
+                    checks["workers"] = "ok" if fresh else "none_active"  # degraded: uploads still queue
+                except Exception:  # noqa: BLE001
+                    checks["workers"] = "unknown"
+    except Exception:  # noqa: BLE001
+        checks = {"database": "unavailable"}
+    return checks
+
+
+def _storage_probe() -> str:
+    try:
+        return "ok" if default_store(settings).healthy() else "unavailable"
+    except StorageError:
+        return "unavailable"
+
+
+def _idp_probe() -> str:
+    from .identity.oidc import OIDCError, get_oidc_client
+
+    try:
+        get_oidc_client(settings).metadata()
+        return "ok"
+    except OIDCError:
+        return "unavailable"
+
+
+@app.get("/api/health/ready")
+async def readiness(response: Response, db: Session = Depends(get_db)):
+    """Ready to serve traffic: critical dependencies reachable. Component states only: no hosts,
+    versions, credentials or exception texts.
+
+    Every probe runs in a worker thread for at most READINESS_TIMEOUT_SECONDS, concurrently; a
+    probe that has not answered by then reports `unavailable` (found by the resilience drill: with
+    PostgreSQL frozen, the old check waited on a pooled connection until the client gave up)."""
+    results: dict[str, object] = {}
+
+    async def bounded(name: str, probe, *args) -> None:
+        with move_on_after(settings.readiness_timeout_seconds):
+            results[name] = await to_thread.run_sync(probe, *args, abandon_on_cancel=True)
+
+    async with create_task_group() as group:
+        group.start_soon(bounded, "database", _database_probe, db.get_bind())
+        group.start_soon(bounded, "object_storage", _storage_probe)
+        if settings.oidc_auth:
+            group.start_soon(bounded, "identity_provider", _idp_probe)
+    checks: dict[str, str] = dict(results.get("database") or {"database": "unavailable"})
+    checks["object_storage"] = str(results.get("object_storage") or "unavailable")
+    if settings.oidc_auth:
+        checks["identity_provider"] = str(results.get("identity_provider") or "unavailable")
+    checks["embedding_model"] = "loaded" if get_embedder().is_loaded else "not_loaded"
+    critical = ("database", "schema", "object_storage", "identity_provider")
+    ready = all(checks.get(name, "ok") == "ok" for name in critical)
+    degraded = checks.get("workers") not in (None, "ok") or checks["embedding_model"] != "loaded"
+    response.status_code = 200 if ready else 503
+    return {"status": "ready" if ready and not degraded else ("degraded" if ready else "not_ready"),
+            "checks": checks}
+
+
+# ----------------------------------------------------------------------------- identity
 
 @app.get("/api/me")
 def me(user: User = Depends(current_user)):
-    return {"email": user.email, "groups": user.groups, "role": user.role, "tenant": user.tenant_id}
+    return user_view(user)
+
+
+# ----------------------------------------------------------------------------- documents
+
+def _grants(db: Session, ids: list[str]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    if ids:
+        for doc_id, group in db.execute(select(DocumentGrant.document_id, DocumentGrant.group_name)
+                                        .where(DocumentGrant.document_id.in_(ids))
+                                        .order_by(DocumentGrant.id)):
+            out[doc_id].append(group)
+    return out
 
 
 @app.get("/api/documents")
 def documents(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.scalars(authorized_documents(user).order_by(Document.created_at.desc())).all()
+    ids = [d.id for d in rows]
+    grants, jobs = _grants(db, ids), lifecycle.latest_jobs(db, ids)
     return [
         {
             "id": d.id,
@@ -139,9 +316,9 @@ def documents(user: User = Depends(current_user), db: Session = Depends(get_db))
             "pages": d.page_count,
             "created_at": d.created_at.isoformat(),
             "fields": d.extracted_fields,
-            "groups": db.scalars(
-                select(DocumentGrant.group_name).where(DocumentGrant.document_id == d.id)
-            ).all(),
+            "groups": grants[d.id],
+            "intelligence": intelligence_summary(db, d),
+            **lifecycle.lifecycle_view(d, jobs.get(d.id)),
         }
         for d in rows
     ]
@@ -162,6 +339,8 @@ def document_details(
         "filename": doc.filename,
         "page_count": doc.page_count,
         "fields": doc.extracted_fields,
+        "owner_is_me": doc.owner_id == user.id,
+        **lifecycle.lifecycle_view(doc, lifecycle.latest_jobs(db, [doc.id]).get(doc.id)),
         "pages": [
             {"page": c.page_number, "content": c.content}
             for c in db.scalars(
@@ -180,95 +359,98 @@ def original_file(
     doc = permitted_document(db, user, document_id)
     if not doc:
         raise HTTPException(404, "Document not found")
-    path = settings.storage_dir / doc.storage_key
-    if not path.is_file():
-        raise HTTPException(404, "Original file missing")
+    response = stream_object(doc.storage_backend, doc.storage_key, doc.filename, doc.content_type)
     audit(db, user, "source_download", doc.id)
     db.commit()
-    return FileResponse(path, filename=doc.filename)
+    return response
 
 
+# A plain `def` route: FastAPI runs it in its worker threadpool, so validation, storage I/O and
+# (inline mode) parsing / embedding never block the event loop.
 @app.post("/api/documents", status_code=201)
-async def upload(
+def upload(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     groups: str = Form(..., description="Comma-separated groups to grant"),
+    retention_days: int | None = Form(default=None),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     embedder: Embedder = Depends(get_embedder),
+    sessions: sessionmaker = Depends(lifecycle.get_worker_sessions),
 ):
-    filename = Path(file.filename or "").name
-    extension = Path(filename).suffix.lower()
-    if extension not in {".pdf", ".docx", ".txt", ".md"}:
-        raise HTTPException(415, "Supported: PDF with a text layer, DOCX, TXT, MD")
+    cfg = settings
     allowed_groups = list(dict.fromkeys(g.strip() for g in groups.split(",") if g.strip()))
     if not allowed_groups or len(allowed_groups) > 5 or any(len(g) > 60 for g in allowed_groups):
         raise HTTPException(400, "Provide 1 to 5 valid groups")
     if user.role != "admin" and not set(allowed_groups).issubset(set(user.groups)):
         raise HTTPException(403, "Cannot share with a group you do not belong to")
-    contents = await file.read(settings.max_upload_bytes + 1)
-    if not contents or len(contents) > settings.max_upload_bytes:
-        raise HTTPException(413, "Empty or over-sized upload")
+    idempotency_key = lifecycle.checked_idempotency_key(request.headers.get("Idempotency-Key"))
+    if idempotency_key:
+        previous = queue.by_idempotency_key(db, user.tenant_id, idempotency_key)
+        if previous is not None and previous.document_id:
+            response.status_code = 200
+            return {"id": previous.document_id, "deduplicated": True, "job": queue.view(previous)}
+    contents = file.file.read(cfg.max_upload_bytes + 1)
     try:
-        pages = extract_pages(filename, contents)
-    except Exception as exc:
-        raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
+        validated = validate_upload(file.filename, contents, cfg)
+    except UploadRejected as exc:
+        raise HTTPException(exc.status, exc.message) from None
+    retention = lifecycle.retention_until(retention_days, cfg)
+    parsed = None
+    if cfg.processing_mode == "inline":
+        # Inline (local demo, tests, evaluation): keep the v0.3 contract that a file which cannot
+        # be parsed is rejected with 422 and nothing is stored. Queue mode parses in the worker.
+        try:
+            with span("document.parse", **{"document.format": validated.format}):
+                parsed = parse_document(validated.filename, contents)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
     doc_id = str(uuid4())
-    storage_key = f"{doc_id}{extension}"
-    file_path = settings.storage_dir / storage_key
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(contents)
+    backend, key = lifecycle.put_original(cfg, user.tenant_id, doc_id, 1, validated, contents)
     try:
-        doc = Document(
-            id=doc_id,
-            tenant_id=user.tenant_id,
-            owner_id=user.id,
-            title=Path(filename).stem[:200],
-            filename=filename[:255],
-            storage_key=storage_key,
-            sha256=sha256(contents).hexdigest(),
-            page_count=len(pages),
-            extracted_fields=extract_contract_fields(pages),
-        )
-        db.add(doc)
-        db.flush()  # no ORM relationships: parent row must exist before FK children (PostgreSQL)
-        for group in allowed_groups:
-            db.add(DocumentGrant(document_id=doc_id, group_name=group))
-        for page_num, page in enumerate(pages, 1):
-            for position, chunk in enumerate(split_page(page)):
-                db.add(
-                    Chunk(
-                        id=str(uuid4()),
-                        document_id=doc_id,
-                        page_number=page_num,
-                        position=position,
-                        content=chunk,
-                    )
-                )
-        audit(db, user, "upload", doc_id)
+        doc, job = lifecycle.create_document(db, user, validated, allowed_groups, document_id=doc_id,
+                                             backend=backend, key=key, cfg=cfg, retention=retention,
+                                             idempotency_key=idempotency_key)
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        lifecycle.discard_object(cfg, key)
+        previous = queue.by_idempotency_key(db, user.tenant_id, idempotency_key) if idempotency_key else None
+        if previous is None:
+            raise
+        response.status_code = 200
+        return {"id": previous.document_id, "deduplicated": True, "job": queue.view(previous)}
     except Exception:
         db.rollback()
-        file_path.unlink(missing_ok=True)
+        lifecycle.discard_object(cfg, key)
         raise
-    # Embeddings are generated after the document is durably stored. A model failure is reported
-    # explicitly (no placeholder vectors); `python scripts/embed_backfill.py` can retry later.
-    embedding_status = "skipped_requires_postgresql"
-    if not settings.embed_on_upload:
-        embedding_status = "disabled"
-    elif db.get_bind().dialect.name == "postgresql":
-        try:
-            stats = embed_pending_chunks(db, embedder, document_ids=[doc_id])
-            db.commit()
-            embedding_status = f"embedded:{stats.embedded}"
-        except EmbeddingError as exc:
-            db.rollback()
-            embedding_status = f"failed: {str(exc)[:160]}"
+    duplicate_of = db.scalar(authorized_documents(user).with_only_columns(Document.id).where(
+        Document.sha256 == validated.sha256, Document.id != doc_id, Document.owner_id == user.id).limit(1))
+    if cfg.processing_mode != "inline":
+        response.status_code = 202
+        return {"id": doc_id, "title": doc.title, "lifecycle_state": "uploaded", "duplicate_of": duplicate_of,
+                "job": queue.view(job), "status_url": f"/api/jobs/{job.id}"}
+    outcome = lifecycle.execute_inline(job.id, cfg, sessions, embedder, preparsed=parsed, preloaded=contents)
+    db.expire_all()
+    doc = db.get(Document, doc_id)
+    result = outcome.result or {}
+    if outcome.status == "completed":
+        embedding_status = result.get("embedding_status", "unknown")
+    elif outcome.error_code == "embedding_unavailable":
+        embedding_status = outcome.error_message or "failed"
+    else:
+        embedding_status = f"not_completed: {outcome.error_code or outcome.status}"
     return {
         "id": doc_id,
         "title": doc.title,
         "pages": doc.page_count,
-        "fields_extracted": len(doc.extracted_fields),
+        "fields_extracted": len(doc.extracted_fields or {}),
         "embedding_status": embedding_status,
+        "processing": intelligence_summary(db, doc),
+        "lifecycle_state": doc.lifecycle_state,
+        "duplicate_of": duplicate_of,
+        "job": queue.view(db.get(ProcessingJob, job.id) or job),
     }
 
 
@@ -289,20 +471,23 @@ def ask(
     embedder: Embedder = Depends(get_embedder),
 ):
     start = perf_counter()
+    mode = payload.mode or default_retrieval_mode(db.get_bind().dialect.name)
     weights = payload.weights.model_dump()
-    if payload.mode == "hybrid" and not any(w > 0 for w in weights.values()):
+    if mode == "hybrid" and not any(w > 0 for w in weights.values()):
         raise HTTPException(422, "At least one hybrid weight must be positive")
     try:
-        result = retrieve(
-            db, user, payload.question, payload.mode, embedder,
-            top_k=payload.top_k, candidates=payload.candidates,
-            weights=weights, rrf_k=settings.rrf_k,
-        )
+        with span("retrieval", **{"retrieval.mode": mode, "retrieval.top_k": payload.top_k}):
+            result = retrieve(
+                db, user, payload.question, mode, embedder,
+                top_k=payload.top_k, candidates=payload.candidates,
+                weights=weights, rrf_k=settings.rrf_k,
+            )
     except RetrievalUnavailable as exc:
-        raise HTTPException(409, f"{exc}; mode '{payload.mode}' is unavailable") from None
+        raise HTTPException(409, f"{exc}; mode '{mode}' is unavailable") from None
     except EmbeddingError as exc:
         # No silent fallback to keyword-only results: the caller asked for a specific strategy.
         raise HTTPException(503, f"Embedding model unavailable: {str(exc)[:160]}") from None
+    RETRIEVAL_DURATION.labels(mode).observe((perf_counter() - start))
     hits = result.hits
     # Query-aware sentence selection over the AUTHORIZED hits only. The semantic sentence scorer is
     # used where the embedding model is part of the deployment (PostgreSQL); SQLite stays lexical.
@@ -314,7 +499,7 @@ def ask(
         snippets = select_evidence(payload.question, hits, None)  # lexical scoring only
     result.timings_ms["evidence_selection"] = round((perf_counter() - extract_start) * 1000, 2)
     evidence = {"applied": False}
-    if payload.mode in ("semantic", "hybrid") and payload.apply_evidence_policy:
+    if mode in ("semantic", "hybrid") and payload.apply_evidence_policy:
         decision = assess(payload.question, result, EVIDENCE_POLICY, snippets)
         evidence = {
             "applied": True,
@@ -328,18 +513,15 @@ def ask(
         }
         if not decision.sufficient:
             hits, snippets = [], []  # insufficient evidence: nothing is cited or sent to an LLM
-    try:
-        response, mode = answer(payload.question, hits, sentence_embedder, snippets)
-    except Exception:
-        response, mode = (
-            "The model provider could not complete the request. Verify sources below.",
-            "provider_error",
-        )
+    # Provider failures and unverifiable LLM citations fall back to verbatim quotes inside answer().
+    with span("rag.answer", **{"retrieval.mode": mode, "rag.sources": len(hits)}):
+        response, answer_mode = answer(payload.question, hits, sentence_embedder, snippets)
     audit(db, user, "ask")
     db.commit()
+    RAG_DURATION.labels(answer_mode).observe(perf_counter() - start)
     return {
         "answer": response,
-        "mode": mode,
+        "mode": answer_mode,
         "retrieval": result.mode,
         "duration_ms": round((perf_counter() - start) * 1000),
         "diagnostics": {

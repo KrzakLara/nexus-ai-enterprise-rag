@@ -8,7 +8,7 @@
 
 `Applied AI` · `FastAPI` · `React + TypeScript` · `SQLAlchemy + Alembic` · `PostgreSQL FTS + pgvector` · `SentenceTransformers` · `Docker` · `pytest`
 
-**Status:** v0.2-dev (Phase 2d). Four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector semantic, hybrid RRF), query-aware verbatim answers, a dev-calibrated evidence-sufficiency (abstention) policy, and a reproducible evaluation over 100 labeled questions with zero measured authorization violations. This is a local demo and is not production-ready.
+**Status:** v0.4.0 on `feat/phase4-enterprise-hardening` (Phases 1–4; not yet merged, untagged). GitHub Actions run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) is green: tests, coverage floor, Phase 2/3 gates, secret scan, config validation and Docker end-to-end. Phase 4 adds OpenID Connect single sign-on with server-side sessions, PostgreSQL row-level security below the application ACL, durable background workers, private S3-compatible storage with a full document lifecycle, and structured logs, Prometheus metrics and OpenTelemetry traces ([docs/enterprise-hardening.md](docs/enterprise-hardening.md)). Phases 1–3: four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector, hybrid RRF) evaluated on 100 labeled questions, and document intelligence (OCR, extraction with verbatim evidence, validation, review, comparison) evaluated on a frozen 32-document corpus. Zero measured authorization violations. Hardened, but not certified or externally penetration-tested. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 </div>
 
@@ -31,15 +31,18 @@ Most RAG demos stop at *upload a PDF → chat*. Real enterprise document AI need
 | **Alembic migrations** (0001 v0.1 baseline, 0002 pgvector, 0003 FTS) | Fresh install, v0.1 stamp-and-upgrade and ORM parity on SQLite + PostgreSQL |
 | **Query-aware offline answers**: the best sentences of each authorized hit are quoted verbatim with their own `[S#]`, instead of the first 330 characters | `test_extractive.py`, `test_answers_pg.py`; every quote checked to be a substring of the cited chunk; answer fact recall gated in CI |
 | Citation inspector | `[S1]` markers, document/page from the real chunk, the quoted sentences (`selected_sentences`); keyword, semantic and RRF ranks in the UI |
-| Ingestion, regex contract fields, audit trail, 5 demo personas | Existing v0.1 tests, re-run on PostgreSQL |
+| **Ingestion**: PDF (text layer, per-page), DOCX (paragraphs + table rows), TXT/MD; chunking with overlap and page numbers; regex contract fields with page evidence (`needs_review`) | `test_documents.py`: generated multi-page PDFs and DOCX files, blank pages, no-text-layer PDFs, malformed/truncated files, unsupported formats, size limit, upload → chunks → page-correct citation, on SQLite **and** PostgreSQL |
+| **Complete MVP workflow**: login → upload → parse → chunk → embed → retrieve → answer → citation → source view → original download → audit | `test_mvp_e2e.py` on SQLite and PostgreSQL, including denial for another group and another tenant |
+| **Answer generation**: offline verbatim extractive mode; optional OpenAI path with `[S#]` validation. A provider failure (`provider_error`) or an unverifiable LLM answer (`citation_validation_failed`) is **never shown**; the response falls back explicitly to the verbatim quotes | `test_generation.py` with a fake client that records the exact prompt (no network, no key). **A live OpenAI call has not been verified** |
+| Audit trail, 5 demo personas | `test_permissions.py`, `test_mvp_e2e.py` |
 | **Evaluation framework**: 30-document bilingual corpus, 100 hand-labeled questions (chunk-level, graded), dev/test split, Recall/Precision/MRR/nDCG/Hit Rate, bootstrap CIs, latency | `scripts/evaluate.py`; [docs/evaluation.md](docs/evaluation.md), [docs/benchmark-results.md](docs/benchmark-results.md) |
 | **Evidence-sufficiency policy**: exact-identifier check + best *sentence* cosine ≥ 0.835 (selected on dev), so insufficient evidence returns `no_evidence` | Held-out confusion matrices; `test_evidence.py`; drift guards for `config.py` and `.env.example` against `eval/calibration.json` |
 | **Citation and security evaluation**: every citation is mapped back to the stored chunk; an independent ACL oracle checks every candidate, source, citation and LLM prompt | [docs/security.md](docs/security.md); zero-tolerance CI gates |
 | **CI regression gates**: malformed ground truth, leaks, citation errors, non-verbatim quotes, retrieval floors, abstention floor, answer fact recall floor (all mandatory) | `python scripts/evaluate.py --ci`, `eval/ci_thresholds.json` |
 | Evaluation view in the UI | Reads the stored report via `/api/evaluation/summary`; no hardcoded numbers |
-| Tests | **163 tests**: 41 run against real PostgreSQL + pgvector with the real model; 85 % line coverage of `backend/app` + `backend/evaluation` |
+| Tests | **567 tests** (v0.4.0). GitHub Actions run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) runs all of them with PostgreSQL 16 + pgvector (RLS runtime roles), MinIO, Keycloak, Tesseract and the real embedding model: 0 failures, coverage of `backend/app` at or above the 90 % floor (exact figure in the job log). Earlier: 220 tests, 95 % coverage at v0.2 (2026-11-14) |
 
-> **Honest findings.** On the held-out test split **no retrieval mode is significantly better than another**: nDCG@5 is ≈ 0.70–0.74 and every paired bootstrap CI contains 0. **Hybrid does not "win"**. Cross-language questions are weak for every mode because of the embedding model's same-language bias. Two fixes were measured and **not adopted**. A stronger cross-language embedder lost far more elsewhere. Local query translation (MarianMT) tripled hybrid cross-language nDCG@5 on test (0.25 → 0.76), but lowered overall nDCG@5 (0.734 → 0.721) and same-language quality, and added ~0.5 s per query ([evaluation.md](docs/evaluation.md#query-translation-experiment-phase-2d-not-adopted)). The Phase 2d evidence policy refuses every unanswerable test question (9/9), but it also refuses **more answerable ones** than Phase 2c (8/41 instead of 6/41). Query-aware quoting raised offline answer fact recall on test from 0.333 to 0.590, so about 4 in 10 answers still miss an expected fact. Not implemented: LLM answer evaluation (no API key here), reranking, ANN indexes, OCR/Docling, workers and production SSO. Details: [docs/evaluation.md](docs/evaluation.md).
+> **Honest findings.** On the held-out test split **no retrieval mode is significantly better than another**: nDCG@5 is ≈ 0.70–0.74 and every paired bootstrap CI contains 0. **Hybrid does not "win"**. Cross-language questions are weak for every mode because of the embedding model's same-language bias. Two fixes were measured and **not adopted**. A stronger cross-language embedder lost far more elsewhere. Local query translation (MarianMT) tripled hybrid cross-language nDCG@5 on test (0.25 → 0.76), but lowered overall nDCG@5 (0.734 → 0.721) and same-language quality, and added ~0.5 s per query ([evaluation.md](docs/evaluation.md#query-translation-experiment-phase-2d-not-adopted)). The Phase 2d evidence policy refuses every unanswerable test question (9/9), but it also refuses **more answerable ones** than Phase 2c (8/41 instead of 6/41). Query-aware quoting raised offline answer fact recall on test from 0.333 to 0.590, so about 4 in 10 answers still miss an expected fact. Not implemented: LLM answer evaluation (no API key here; the OpenAI path is tested only against a fake client), reranking, ANN indexes, OCR/Docling, workers and production SSO. Details: [docs/evaluation.md](docs/evaluation.md).
 
 ## Measured retrieval quality
 
@@ -59,15 +62,46 @@ Authorization violations: 0 (retrieval candidates, API sources, citations, LLM p
 Full results: [docs/benchmark-results.md](docs/benchmark-results.md).
 <!-- BENCHMARK:END -->
 
+## Document intelligence (Phase 3)
+
+> Part of v0.3.0 (release candidate). Release notes: [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md). Details: [docs/document-intelligence.md](docs/document-intelligence.md) · [human review](docs/human-review.md) · [evaluation method](docs/extraction-evaluation.md) · [generated results](docs/extraction-evaluation-results.md) · [case study](docs/phase3-case-study.md).
+
+Upload a contract or an invoice (text PDF, **scanned PDF**, DOCX, **XLSX**, TXT, Markdown). NEXUS then:
+1. parses it into pages, headings, paragraphs and tables, using Tesseract OCR with deskew and table-lattice rebuild for scans;
+2. classifies it as contract, invoice or unknown;
+3. extracts schema fields, each with the **verbatim evidence** (page, line or table cell, bbox when available);
+4. checks that the evidence supports each value;
+5. validates dates, currencies and invoice arithmetic with Decimal, without auto-correcting anything;
+6. queues it for **human review**: corrections next to the original values, approve / reject, optimistic locking and an audit history.
+
+**Multi-document queries** answer questions such as *"Which contracts expire within 90 days?"*, *"Which invoices fail validation?"* and *"Which documents conflict?"* (same contract ID with different terms; same supplier with a different IBAN). They use deterministic logic over authorized, evidence-backed fields.
+
+Measured on a frozen 32-document corpus (16 contracts, 14 invoices, 2 other; 7 scanned and 1 mixed PDF; EN + HR; 2 tenants), offline rules provider, dataset **v1.1** (label errata in [`eval/docintel/ERRATA.md`](eval/docintel/ERRATA.md)), `eval/docintel/reports/latest.json` (2026-11-14):
+
+| Metric | Result |
+|---|---|
+| Field F1 (all / dev / **test**) | 0.985 / 0.995 / **0.971** (exact match 0.973, 376 field slots) |
+| Invented values for absent fields | 0 of 9 |
+| Evidence supports the value / on the right page | 100 % / 99.6 % (533 values) |
+| Line-item cells / rows | 135/135 / 27/27 |
+| OCR on 10 scanned pages (CER / key-token recall) | 0.0015 / 0.992 |
+| Invalid invoices blocked from approval / validation false accepts | 4/4 / 0 |
+| Multi-document questions exact (after review) | 6/6 |
+| Security matrix (1,946 requests, 7 personas × 32 documents) | **0 violations** |
+
+Every miss is a deliberately **novel label** on a test document, or an OCR `0`/`O` confusion. The misses were reported, not patched. The corpus is synthetic and authored by the same team as the rules, so these numbers are optimistic. Live LLM extraction is **not verified** (the optional provider is tested with a fake client only).
+
 ## Retrieval modes
 
 | `mode` | Strategy | Score returned | Works on |
 | --- | --- | --- | --- |
-| `bm25` (default when `mode` is omitted) | v0.1 in-process Python BM25 over at most 2,000 authorized chunks | BM25 score | SQLite + PostgreSQL |
+| `bm25` (default when `mode` is omitted **on SQLite**) | v0.1 in-process Python BM25 over at most 2,000 authorized chunks | BM25 score | SQLite + PostgreSQL |
 | `lexical` | PostgreSQL FTS: `chunks.content_tsv @@ query`, ranked by `ts_rank_cd(..., 1)` | `ts_rank_cd` | PostgreSQL |
 | `semantic` | Exact cosine distance `embedding <=> query` (no ANN index) | cosine similarity | PostgreSQL + pgvector |
-| `hybrid` | Both branches above (each permission-scoped, `candidates` each), fused with RRF | RRF score, **not a confidence** | PostgreSQL + pgvector |
+| `hybrid` (default when `mode` is omitted **on PostgreSQL**) | Both branches above (each permission-scoped, `candidates` each), fused with RRF | RRF score, **not a confidence** | PostgreSQL + pgvector |
 
+> **Changed in v0.2.0:** when a request omits `mode`, the API now uses `hybrid` on PostgreSQL (previously always `bm25`), the same default the UI picks. `/api/health` reports it as `default_retrieval_mode`. The BM25 baseline loads at most 2,000 authorized chunks and is kept for comparison, not as the PostgreSQL default.
+>
 > **Changed in Phase 2b:** in the unreleased Phase 2a build, `"mode": "lexical"` meant Python BM25. It now means PostgreSQL FTS, and BM25 is `"mode": "bm25"`, which is also the default when `mode` is omitted (the v0.1 behaviour). The response field `retrieval` always reports the mode that actually ran. On SQLite, `lexical`, `semantic` and `hybrid` return **HTTP 409**. If the embedding model is unavailable, `semantic` and `hybrid` return **HTTP 503** instead of silently falling back to keyword results.
 
 ```mermaid
@@ -114,7 +148,9 @@ The exact identifier appears only in the Cygnus agreement. The keyword branch fi
 
 ## Demo scenarios (checked against the running stack)
 
-`python scripts/demo_scenarios.py` logs in as the seeded personas, calls the live API (`docker compose up`) and checks each behaviour. It exits with code 1 if any scenario regresses. Last run on 2026-11-12: 9 PASS, 1 KNOWN.
+`python scripts/demo_scenarios.py` logs in as the seeded personas, calls the live API (`docker compose up`) and checks each behaviour. It exits with code 1 if any scenario regresses. Last run on 2026-11-14 against the v0.2.0 Docker stack: 9 PASS, 1 KNOWN. The KNOWN item, 2b, is a documented false abstention of the dev-calibrated policy, accepted for v0.2.0.
+
+The demo scenarios only read. `python scripts/docker_smoke.py` also checks the write path in Docker against a **disposable** API instance (setup in its docstring): PDF upload → embeddings → default-mode hybrid answer cited on the right page → document view → byte-identical download → denial for another group and tenant → audit trail. It also checks that `/api/health` stays responsive during a large upload. Phase 3 checks follow: a scanned invoice is OCRed, flagged and blocked from approval, an XLSX invoice is approved, and review and compare respect the ACL. Last run on 2026-11-14 (Phase 3 image): 27/27 passed (a 39 s upload with 498 embeddings; maximum health latency 35 ms). Walk-through: [docs/demo.md](docs/demo.md).
 
 | # | Scenario | Persona · mode | Observed |
 |---|---|---|---|
@@ -131,25 +167,37 @@ The exact identifier appears only in the Cygnus agreement. The keyword branch fi
 
 ## Quick start (Docker, recommended)
 
-Prerequisites: Docker Desktop with Compose. From the repository root:
+Prerequisites: Docker Desktop with Compose v2 (about 8 GB of RAM for the full stack, 6 GB of disk
+for images and the model cache). From the repository root:
 
 ```bash
-docker compose up --build
+docker compose up --build                                                  # local demo (demo personas)
+docker compose -f compose.yaml -f compose.oidc.yaml up --build             # + Keycloak single sign-on
+docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml up --build   # + Prometheus / Grafana / Jaeger
 ```
 
-When the API container starts it runs:
+Services (Phase 4):
 
-1. `python scripts/migrate.py`: Alembic `upgrade head` (pgvector extension, embeddings table, FTS column + GIN index)
-2. `python scripts/seed_demo.py`: synthetic documents and users, then embeds any chunks that are missing vectors
-3. `uvicorn backend.app.main:app`
+1. `db` PostgreSQL 16 + pgvector; `minio` private S3 storage + `minio-init` (bucket and a
+   bucket-scoped access key)
+2. `migrate` (one-shot, migration role): Alembic `upgrade head` (incl. row-level security),
+   LOGIN for the runtime roles, synthetic demo data stored in MinIO, embeddings
+3. `api` (FastAPI as the RLS runtime role `nexus_app`, cookie sessions, `PROCESSING_MODE=queue`) and
+   `worker` (`nexus_worker`, durable background jobs; scale with `--scale worker=2`)
+4. `frontend` (Vite dev server; `/api` is proxied on the same origin)
 
-The first start downloads the embedding model (~470 MB) into the `model_cache` volume. The first semantic or hybrid query after a restart loads the model (~10 s). The API image is large (~2.8 GB, mostly PyTorch CPU and transformers).
+The first start downloads the embedding model (~470 MB) into the `hf_models` volume. All
+credentials in the Compose files are labelled local-only defaults; ports bind to 127.0.0.1;
+MinIO, the worker and metrics are not published. Production-oriented settings:
+[deploy/production.env.example](deploy/production.env.example) (the services refuse to start with
+demo authentication or other unsafe settings when `APP_ENV=production`).
 
-- **App:** http://localhost:5173. The retrieval selector under the chat input offers *BM25 (baseline)*, *Keyword · PostgreSQL FTS*, *Semantic · pgvector* and *Hybrid · RRF* (the default on PostgreSQL).
-- **API docs:** http://localhost:8000/docs
-- **Health:** http://localhost:8000/api/health (lists the available `retrieval_modes`)
+- **App:** http://localhost:5173 · **API docs:** http://localhost:8000/docs
+- **Health:** `/api/health` (capabilities), `/api/health/live`, `/api/health/ready` (component states)
+- **SSO (OIDC overlay):** "Sign in with SSO" → Keycloak (http://localhost:8080, synthetic users below)
+- **Observability overlay:** Grafana http://localhost:3001, Prometheus http://localhost:9090, Jaeger http://localhost:16686
 
-**Demo password:** `DemoPass123!`
+**Demo password (demo personas and Keycloak users):** `DemoPass123!` (local only)
 
 | User | Demonstrates |
 | --- | --- |
@@ -170,6 +218,8 @@ OPENAI_MODEL=gpt-4.1-mini
 
 When a key is configured, the authorized excerpts are sent to the external API. Do not use real confidential data.
 
+The answer is accepted only if it cites at least one `[S#]` and every marker resolves to a supplied source (`mode: "llm"`). If the provider fails, the response has `mode: "provider_error"`. If the citations cannot be verified, it has `mode: "citation_validation_failed"` and the model text is discarded. In both cases the response contains a notice followed by the verbatim extractive quotes. Marker validation does not check that each claim is supported by the cited text. Claim-level grounding and LLM answer evaluation are future work.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -178,6 +228,7 @@ When a key is configured, the authorized excerpts are sent to the external API. 
 | `RRF_K` | `60` | RRF constant `k` |
 | `RRF_WEIGHT_LEXICAL` / `RRF_WEIGHT_SEMANTIC` | `1.0` / `1.0` | Branch weights (the request can override with `weights`) |
 | `EMBEDDING_MODEL`, `EMBEDDING_MODEL_REVISION`, `EMBEDDING_DEVICE`, `EMBEDDING_BATCH_SIZE`, `EMBED_ON_UPLOAD` | see `.env.example` | Local embedding model (must produce 384-d vectors) |
+| `EMBEDDING_WARMUP` | `true` | Load the embedding model at API startup (PostgreSQL only) instead of on the first semantic query |
 | `EVIDENCE_POLICY_ENABLED` / `EVIDENCE_MIN_SENTENCE_SIMILARITY` / `EVIDENCE_MIN_SIMILARITY` / `EVIDENCE_MIN_TERM_COVERAGE` / `EVIDENCE_REQUIRE_IDENTIFIER` / `EVIDENCE_ACCEPT_AGREEMENT` | `true` / `0.835` / `none` / `none` / `true` / `false` | Evidence-sufficiency policy for semantic and hybrid answers, calibrated on the dev split. `none` **disables** a rule (it is not a threshold of 0). Setting the Phase 2c value `EVIDENCE_MIN_SIMILARITY=0.82` would OR-in the chunk rule and make the policy more permissive than the measured one. The request can pass `apply_evidence_policy: false` to inspect raw retrieval |
 
 ## Database migrations
@@ -246,12 +297,14 @@ Frontend: `cd frontend && npm ci && npm run dev`.
 ## Tests and evaluation
 
 ```bash
-python -m pytest -q                                   # without PostgreSQL: 122 pass, 41 skip
+python -m pytest -q                                   # without services: PostgreSQL / MinIO / Keycloak / OCR tests skip
 python -m pytest -q -m "not model and not postgres"   # fast subset: no model, no DB
 
 docker compose up -d db
 export TEST_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_test
-python -m pytest -q -rs --cov=backend/app             # 163 tests (the *_test DBs are DROPPED and re-created)
+export TEST_S3_ENDPOINT_URL=http://127.0.0.1:9000       # optional: MinIO integration (+ TEST_S3_ACCESS_KEY / TEST_S3_SECRET_KEY)
+export TEST_KEYCLOAK_URL=http://localhost:8080         # optional: real Keycloak (bootstrap admin: see test_keycloak_integration.py)
+python -m pytest -q -rs --cov=backend/app             # 567 tests; CI runs all of them, coverage floor 90 % (the *_test DBs are DROPPED and re-created)
 
 export EVAL_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_eval
 python scripts/evaluate.py            # full benchmark (~10 min CPU): reports, ablation, calibration, extraction study, docs + README
@@ -263,6 +316,9 @@ uv sync --locked --extra dev --extra mt   # optional: local MarianMT for the tra
 EVAL_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_mt_eval \
   python scripts/experiment_query_translation.py   # dev only; --split test --variants <name> once, per its rule
 python scripts/demo_scenarios.py      # the 8 demo scenarios against the running Docker stack
+python scripts/docker_smoke.py        # 27 write-path checks (Phases 1-3) against a DISPOSABLE API instance (see its docstring)
+python scripts/build_docintel_dataset.py --check   # Phase 3 frozen corpus unchanged
+python scripts/evaluate_docintel.py --database-url ...nexus_docintel_eval   # Phase 3 evaluation (needs Tesseract)
 python scripts/build_eval_dataset.py  # rebuild + validate labels after editing eval/questions.jsonl
 python scripts/evaluate_retrieval.py  # legacy v0.1 BM25 smoke set on the demo database (8 examples)
 ```
@@ -276,14 +332,22 @@ The evaluation database (`EVAL_DATABASE_URL`, which must be given explicitly) is
 | `test_answers_pg.py` (3) | End-to-end `/api/ask` with the real demo documents and model: the Croatian Atlas notice question is answered with a verbatim, cited "90 days" quote; users without access never see the clause; a question without evidence abstains | PostgreSQL + real model |
 | `test_pgvector.py` (5) | `vector(384)`, persisted real embeddings, cosine == numpy, vector-space leak test, upload → searchable | PostgreSQL + real model |
 | `test_permissions.py` (16) | Auth, tenant/group isolation, file ACL, upload grants, audit | SQLite **and** PostgreSQL |
+| `test_documents.py` (37) | PDF text layer per page, blank pages, PDF without text layer (OCR not supported) and 100-page limit; DOCX paragraphs, headings and table rows; TXT/MD with BOM and Croatian text; malformed, truncated, non-UTF-8 and unsupported files; chunk size, overlap and boundaries; upload → chunks with page numbers → embeddings (PostgreSQL) → page-correct retrieval; HTTP 400/413/415/422 with nothing stored | pure Python, SQLite **and** PostgreSQL |
+| `test_generation.py` (17) | Exact LLM prompt (question + numbered authorized sources only), client settings, valid/missing/unknown citations, provider failure → explicit verbatim fallback, no provider call without evidence or key, only authorized text in the prompt through the API | fake OpenAI client; SQLite **and** PostgreSQL |
+| `test_mvp_e2e.py` (5) | Login → PDF upload → listing and fields → default-mode ask → `[S#]` resolves to page 3 → document view → byte-identical download → denial for another group and tenant → audit trail; upload/ask run in the threadpool; default mode; model warm-up success and failure | SQLite **and** PostgreSQL |
 | `test_migrations.py` (5) | Fresh upgrade == ORM, v0.1 stamp-and-upgrade, downgrade round trip | SQLite and PostgreSQL |
 | `test_embeddings.py` (14), `test_indexing.py` (5) | Embedding provider guards, prefixes, batching; idempotent indexing | Real model / SQLite |
-| `test_retrieval_modes.py` (6), `test_parsers_and_retrieval.py` (5) | BM25 default, 409 on SQLite, request validation, evaluation endpoint, parsers | SQLite |
+| `test_retrieval_modes.py` (6), `test_parsers_and_retrieval.py` (5) | BM25 default on SQLite, 409 on SQLite, request validation, evaluation endpoint, parsers | SQLite |
 | `test_eval_metrics.py` (7) | Recall/Precision/Hit/MRR/nDCG against hand-computed values, undefined-metric handling, percentiles | pure Python |
 | `test_eval_dataset.py` (11) | Frozen labels == fresh rebuild, labels point at authorized chunks containing the evidence, 8 kinds of malformed ground truth rejected, hand-edited labels detected | pure Python |
 | `test_evidence.py` (21) | Identifier extraction and exact matching, threshold boundary, sentence and coverage rules, agreement rule, RRF never used as a signal, `none` disables a rule, app defaults **and `.env.example`** == dev calibration | pure Python |
 | `test_extractive.py` (18) | Sentence splitting keeps numbers/dates/identifiers and joins hard-wrapped prose, late facts are selected (not the first 330 characters), Croatian inflection, verbatim per-source quotes, only authorized hits quotable, length bounds; destructive-DB guard | pure Python |
 | `test_evaluation_pg.py` (3) | Evaluation index verified (59 chunks = 59 embeddings, 384-d), metrics bounded, deterministic rankings, end-to-end citations, LLM prompts and permission change | PostgreSQL + real model |
+| `test_auth_oidc.py` (64), `test_keycloak_integration.py` (12) | Phase 4A: strict JWT validation (signatures, claims, algorithm attacks, JWKS rotation, single-flight refresh, IdP outage → 503), claim mapping, BFF login / callback / logout / back-channel logout, cookie sessions, CSRF, origin checks, revalidation, demo isolation; **real Keycloak**: browser login with PKCE, group removal, admin logout, key rotation | fake IdP; real Keycloak |
+| `test_rls_pg.py` (20), `test_security_phase4.py` (14) | Phase 4B: tenant isolation in every table as `nexus_app` (direct SQL), privilege escalation and policy-bypass attempts, worker job scope, pooled-connection context leakage, revocation; mutation test (application filter removed → RLS still blocks) | PostgreSQL (runtime roles) |
+| `test_jobs_lifecycle.py` (41) | Phase 4C/4D: queue mode, idempotency keys, concurrent duplicate submissions (mutation-checked), retries / back-off / dead letter, lease recovery and fencing, cancellation, versions, deletion + purge, retention | SQLite **and** PostgreSQL |
+| `test_storage.py` (22) | Phase 4D: object keys and traversal, upload validation (types, sizes, archives), checksums, presigned URLs, outages; **real MinIO** | local store; MinIO |
+| `test_observability.py` (35) | Phase 4E: log redaction, metrics (no high-cardinality labels), tracing, bounded readiness, 503 on pool exhaustion / frozen dependencies, request deadline | pure Python, SQLite **and** PostgreSQL |
 | `test_ci_gates.py` (13) | Each CI gate fails when breached; a missing threshold fails instead of being skipped; the Phase 2c extractor would fail the answer floor; published benchmark docs and README equal a render of the stored report | pure Python |
 
 **Mutation check:** with the ACL subquery temporarily replaced by an unscoped `select(Document)`, all four keyword/fusion security tests failed (leak, suppression, permission change, LLM prompt), as did the vector-space leak test.
@@ -302,13 +366,24 @@ backend/app/
   extractive.py  query-aware verbatim sentence selection for offline answers
   migrate.py     Alembic runner, v0.1 upgrade detection, autogenerate filter
   models.py, rag.py, parsers.py, auth.py, config.py, database.py
-backend/evaluation/  corpus + ACL oracle, dataset builder/validator, IR metrics, runner, report renderer
+  docintel_api.py  Phase 3 HTTP API (processing, extraction, review, comparison)
+  docintel/      Phase 3: parsing, ocr, ocr_tables, tables, structure, normalize, classify, schemas,
+                 rules, llm, grounding, validation, service, review, compare
+backend/evaluation/  corpus + ACL oracle, dataset builder/validator, IR metrics, runner, report renderer;
+                     docgen.py, docintel_corpus.py, docintel_metrics.py, docintel_eval.py, docintel_report.py (Phase 3)
+eval/docintel/       Phase 3 frozen corpus (32 documents), labels.jsonl, ocr_truth.jsonl, queries.json, manifest.json,
+                     ci_thresholds.json, reports/latest.json
 eval/                corpus/, questions.jsonl, retrieval.jsonl (frozen), calibration.json, ci_thresholds.json, reports/
-backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS
-backend/tests/                163 tests (see table above)
-frontend/                     React + TS: retrieval selector, ranks, timings, evidence status, evaluation view
-scripts/                      migrate.py, seed_demo.py, embed_backfill.py, build_eval_dataset.py, evaluate.py, compare_embedders.py, experiment_query_translation.py, demo_scenarios.py, evaluate_retrieval.py
-docs/                         architecture.md, evaluation.md, security.md, benchmark-results.md (generated)
+backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS · 0004 document intelligence ·
+                              0005 identity + sessions · 0006 storage lifecycle · 0007 processing jobs · 0008 row-level security
+backend/tests/                567 tests (see the table above and docs/security-test-results.md); fixtures.py generates the PDF/DOCX fixtures
+frontend/                     React + TS: retrieval selector, ranks, timings, evidence status, evaluation view,
+                              Document Intelligence workspace (DocIntel.tsx, diApi.ts)
+scripts/                      migrate.py, seed_demo.py, embed_backfill.py, build_eval_dataset.py, evaluate.py, compare_embedders.py, experiment_query_translation.py, demo_scenarios.py, docker_smoke.py, evaluate_retrieval.py,
+                              build_docintel_dataset.py, evaluate_docintel.py (Phase 3)
+docs/                         architecture.md, evaluation.md, security.md, demo.md, benchmark-results.md (generated), releases/,
+                              document-intelligence.md, extraction-evaluation.md, extraction-evaluation-results.md (generated),
+                              human-review.md, phase3-case-study.md
 ```
 
 ## Design invariants
@@ -328,10 +403,15 @@ docs/                         architecture.md, evaluation.md, security.md, bench
 - [x] **v0.2b:** PostgreSQL FTS, hybrid RRF, four API/UI modes, diagnostics, PostgreSQL security tests.
 - [x] **v0.2c, evaluation:** 100-question chunk-level dataset, four-mode benchmark with CIs, RRF ablation (dev → test), calibrated abstention, citation/answer checks, security oracle, CI gates, evaluation UI.
 - [x] **v0.2d, quality:** query-aware verbatim extractive answers (answer fact recall 0.333 → 0.590 on test), sentence-level evidence policy (dev-calibrated, trade-off documented), embedder comparison (e5-small kept), query-translation experiment (not adopted), hard-wrapped sentence joining, mandatory answer-quality CI gate, scripted demo scenarios.
+- [x] **v0.2.0, release:** PDF/DOCX parser and upload tests, a complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid as the PostgreSQL default mode, and a reproducible evaluation re-run. See [CHANGELOG.md](CHANGELOG.md).
 - [ ] **Deferred from v0.2d:** a gated translated-query branch (the ungated one was measured and not adopted), LLM answer evaluation with the same deterministic checks, smaller-chunk ablation.
-- [ ] **v0.3, document intelligence:** OCR/Docling, tables, layout-aware chunking, schema extraction, reviewer UI.
+- [x] **v0.3.0 (Phase 3, release candidate), document intelligence:** layout-aware parsing (PDF, scans, DOCX, XLSX, TXT, MD), Tesseract OCR with deskew and table lattice, contract and invoice schemas with verbatim evidence, grounding, validation, human review, multi-document comparison, 32-document evaluation with CI gates. Not done: layout-aware *chunking*, Docling, live LLM extraction evaluation.
 - [ ] **v0.4, enterprise hardening:** OIDC, Postgres RLS, ANN index with filtered-recall benchmarks, reranking of authorized candidates, workers, prompt-injection regression tests.
 
 ---
+
+## License
+
+NEXUS AI's own code is released under the [MIT License](LICENSE), Copyright (c) 2026 Lara Krzak. Third-party components, the fonts embedded in the evaluation PDFs, the embedding model and the Docker image contents stay under their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); MIT does not relicense them.
 
 **Safety note:** All sample companies, customers and document contents are fictional. This local demo has **not** been audited for regulatory compliance. Do not deploy it publicly or use it with real confidential material.

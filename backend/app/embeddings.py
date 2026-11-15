@@ -104,6 +104,11 @@ class Embedder:
                 "weights_mb": round(sum(p.numel() * p.element_size() for p in params) / 2**20, 1)}
 
     @property
+    def is_loaded(self) -> bool:
+        """True once the model weights are in memory (does not trigger a load)."""
+        return self._model is not None
+
+    @property
     def revision(self) -> str:
         self._load()
         assert self._revision is not None
