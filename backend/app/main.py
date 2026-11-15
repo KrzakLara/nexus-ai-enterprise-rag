@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeout
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import lifecycle
@@ -39,7 +40,7 @@ from .lifecycle_api import stream_object
 from .migrate import assert_schema_current, current_revision, head_revision
 from .models import AuditEvent, Chunk, Document, DocumentGrant, ProcessingJob, User, WorkerHeartbeat
 from .observability.logging import configure_logging
-from .observability.metrics import (DB_POOL, QUEUE_DEPTH, RAG_DURATION, RETRIEVAL_DURATION,
+from .observability.metrics import (DB_POOL, DB_POOL_TIMEOUTS, QUEUE_DEPTH, RAG_DURATION, RETRIEVAL_DURATION,
                                     register_collectors, start_metrics_server)
 from .observability.middleware import RequestContextMiddleware
 from .observability.tracing import init_tracing, span
@@ -126,6 +127,16 @@ async def database_unavailable(request: Request, exc: OperationalError):
                                                "error_type": type(getattr(exc, "orig", exc)).__name__})
     return JSONResponse({"detail": "The database is temporarily unavailable; please retry."}, status_code=503,
                         headers={"Retry-After": "5"})
+
+
+@app.exception_handler(PoolTimeout)
+async def database_pool_exhausted(request: Request, exc: PoolTimeout):
+    """Every pooled connection stayed busy for DB_POOL_TIMEOUT_SECONDS: the API is saturated.
+    Shed the request (503 + Retry-After) instead of failing it with a 500 (found under load)."""
+    DB_POOL_TIMEOUTS.inc()
+    log.warning("database_pool_exhausted", extra={"event": "database_pool_exhausted"})
+    return JSONResponse({"detail": "The service is busy; please retry shortly."}, status_code=503,
+                        headers={"Retry-After": "2"})
 
 
 EVIDENCE_POLICY = EvidencePolicy(

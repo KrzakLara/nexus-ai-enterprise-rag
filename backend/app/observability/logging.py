@@ -143,8 +143,9 @@ def configure_logging(service: str, environment: str, level: str = "INFO", fmt: 
     access = logging.getLogger("uvicorn.access")
     access.handlers.clear()
     access.propagate = False  # replaced by the structured http_request event
-    for noisy in ("httpx", "httpcore", "botocore", "boto3", "urllib3", "s3transfer",
-                  "sentence_transformers", "transformers", "huggingface_hub", "pdfminer", "PIL"):
+    for noisy in ("httpx", "httpx2", "httpcore", "botocore", "boto3", "urllib3", "s3transfer",
+                  "sentence_transformers", "transformers", "huggingface_hub", "pdfminer", "PIL",
+                  "alembic", "alembic.runtime.migration"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     _configured = True
 

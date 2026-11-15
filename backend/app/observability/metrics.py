@@ -62,6 +62,8 @@ REVIEW_ACTIONS = Counter("nexus_review_actions_total", "Human review actions", [
 DOCUMENTS_UPLOADED = Counter("nexus_documents_uploaded_total", "Accepted uploads", ["format"])
 DOCUMENTS_DELETED = Counter("nexus_documents_deleted_total", "Soft-deleted documents", ["reason"])
 DOCUMENTS_PURGED = Counter("nexus_documents_purged_total", "Documents purged by the worker")
+DB_POOL_TIMEOUTS = Counter("nexus_db_pool_timeouts_total",
+                           "Requests shed with 503 because no pooled database connection became free in time")
 WORKER_HEARTBEAT = Gauge("nexus_worker_last_heartbeat_timestamp_seconds", "Last worker heartbeat")
 WORKER_BUSY = Gauge("nexus_worker_busy", "1 while the worker executes a job")
 
@@ -85,7 +87,10 @@ class DbPoolCollector(Collector):
                 getter = getattr(pool, fn, None)
                 if callable(getter):
                     try:
-                        fam.add_metric([label, state], float(getter()))
+                        value = float(getter())
+                        if state == "overflow":  # QueuePool reports -pool_size + opened until the pool fills up
+                            value = max(value, 0.0)
+                        fam.add_metric([label, state], value)
                     except Exception:  # noqa: BLE001
                         continue
         yield fam

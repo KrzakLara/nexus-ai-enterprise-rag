@@ -68,6 +68,7 @@ or tenant ids (`test_metrics_use_low_cardinality_labels`).
 | `nexus_retrieval_duration_seconds`, `nexus_rag_answer_duration_seconds` | histogram | mode / answer_mode |
 | `nexus_object_storage_operations_total`, `nexus_object_storage_duration_seconds` | counter, histogram | operation, outcome |
 | `nexus_db_pool_connections` | gauge | engine (api / worker), state |
+| `nexus_db_pool_timeouts_total` (requests shed with 503 because no pooled connection became free within `DB_POOL_TIMEOUT_SECONDS`) | counter | — |
 | `nexus_extractions_total`, `nexus_review_actions_total` | counter | provider, doc_type, outcome / action |
 | `nexus_documents_uploaded_total`, `nexus_documents_deleted_total`, `nexus_documents_purged_total` | counter | format / reason |
 | `nexus_worker_busy`, `nexus_worker_last_heartbeat_timestamp_seconds` | gauge | — |
