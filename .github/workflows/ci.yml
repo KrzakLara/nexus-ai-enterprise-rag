@@ -117,6 +117,20 @@ jobs:
       - working-directory: frontend
         run: npm run build   # tsc -b (strict type check) + vite production build
 
+  secrets:
+    # Secret scan of the full git history (triaged false positives: .gitleaksignore).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (pinned image, full history)
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
+          zricethezav/gitleaks:v8.24.0 git /repo --redact --no-banner
+          --gitleaks-ignore-path /repo/.gitleaksignore --exit-code 1
+
   config:
     # Static validation of the deployment / observability configuration.
     runs-on: ubuntu-latest
