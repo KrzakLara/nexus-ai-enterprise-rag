@@ -75,8 +75,8 @@ services:
 
   minio-init:
     # One-shot: private bucket + a least-privilege access key for the application (bucket-scoped
-    # Get/Put/Delete/List only). Idempotent.
-    image: ${MINIO_CLIENT_IMAGE:-cgr.dev/chainguard/minio-client@sha256:0f1e32ca3b052f56859103282268dea4903bd78536ab407e3cf241a697013e80}
+    # Get/Put/Delete/List only). Idempotent. The -dev variant of the client image has a shell.
+    image: ${MINIO_CLIENT_IMAGE:-cgr.dev/chainguard/minio-client@sha256:1f2e722c3a6761c537f760e49136c769dddc0cfe21819db0ce2600c1d0ac2c6a}
     entrypoint: ["/bin/sh", "/init/minio-init.sh"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local-admin}
@@ -91,6 +91,7 @@ services:
     restart: "no"
 
   migrate:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
     # One-shot: Alembic migrations (incl. row-level security), LOGIN for the runtime roles, and the
     # synthetic demo data (stored in MinIO, processed inline). Runs as the migration role only.
     build:
@@ -113,6 +114,7 @@ services:
     restart: "no"
 
   api:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -138,6 +140,7 @@ services:
         limits: {memory: 3g}
 
   worker:
+    image: ${NEXUS_BACKEND_IMAGE:-nexus-ai-backend:0.4.0-local}
     # Scale with: docker compose up --scale worker=2
     build:
       context: .
