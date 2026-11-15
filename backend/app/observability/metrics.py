@@ -62,6 +62,8 @@ REVIEW_ACTIONS = Counter("nexus_review_actions_total", "Human review actions", [
 DOCUMENTS_UPLOADED = Counter("nexus_documents_uploaded_total", "Accepted uploads", ["format"])
 DOCUMENTS_DELETED = Counter("nexus_documents_deleted_total", "Soft-deleted documents", ["reason"])
 DOCUMENTS_PURGED = Counter("nexus_documents_purged_total", "Documents purged by the worker")
+REQUEST_DEADLINE_EXCEEDED = Counter("nexus_http_request_deadline_exceeded_total",
+                                    "Requests answered 503 because no response started within REQUEST_TIMEOUT_SECONDS")
 DB_POOL_TIMEOUTS = Counter("nexus_db_pool_timeouts_total",
                            "Requests shed with 503 because no pooled database connection became free in time")
 WORKER_HEARTBEAT = Gauge("nexus_worker_last_heartbeat_timestamp_seconds", "Last worker heartbeat")

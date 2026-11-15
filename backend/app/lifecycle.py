@@ -163,10 +163,30 @@ def soft_delete(db: Session, user: User, doc: Document, cfg: Settings) -> Proces
     return job
 
 
+def serialize_submissions(db: Session, tenant_id: str, job_type: str, document_id: str | None = None) -> None:
+    """Transaction-scoped advisory locks (PostgreSQL) that make "is there an unfinished job? else
+    enqueue" atomic: concurrent duplicate submissions for one document wait for each other instead
+    of both enqueueing (found by the resilience drill). A single submission takes the tenant lock
+    in shared mode plus a per-document lock; a tenant-wide bulk submission takes the tenant lock
+    exclusively, so it needs one lock instead of one per document. Released at commit / rollback."""
+    if db.get_bind().dialect.name != "postgresql":
+        return  # SQLite serializes writers itself
+    tenant_key = f"nexus:submit:{tenant_id}:{job_type}"
+    if document_id is None:
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": tenant_key})
+        return
+    db.execute(text("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))"), {"k": tenant_key})
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+               {"k": f"nexus:submit:{document_id}:{job_type}"})
+
+
 def submit(db: Session, user: User, job_type: str, doc: Document, payload: dict, cfg: Settings,
-           dedupe: bool = True) -> tuple[ProcessingJob, bool]:
-    """Enqueue (or return the unfinished job of the same type for this document)."""
+           dedupe: bool = True, serialized: bool = False) -> tuple[ProcessingJob, bool]:
+    """Enqueue (or return the unfinished job of the same type for this document). `serialized`:
+    the caller already holds the tenant-wide submission lock."""
     if dedupe:
+        if not serialized:
+            serialize_submissions(db, doc.tenant_id, job_type, doc.id)
         existing = queue.active_job(db, doc.id, job_type)
         if existing is not None:
             return existing, False

@@ -1,9 +1,13 @@
 """Phase 4E: structured logging and redaction, metrics, readiness, request ids and trace
 propagation across the durable queue."""
+import asyncio
 import io
 import json
 import logging
 import re
+import socket
+import threading
+import time
 from dataclasses import replace
 
 import pytest
@@ -179,6 +183,114 @@ def test_readiness_is_503_when_the_database_is_down_and_leaks_no_details(scenari
     assert r.status_code == 503 and r.json()["checks"]["database"] == "unavailable"
     for secret in ("secret-pw", "nobody", "127.0.0.1", "nowhere", "psycopg"):
         assert secret not in r.text
+
+
+def test_readiness_answers_within_its_bound_when_a_dependency_hangs(scenario, monkeypatch):
+    """Found by the resilience drill: with PostgreSQL frozen, readiness waited on a pooled
+    connection until the client gave up. Every probe is now bounded."""
+    from backend.app import main
+
+    client, _, _ = scenario
+    monkeypatch.setattr(main, "settings", replace(main.settings, readiness_timeout_seconds=0.5))
+    release = threading.Event()
+
+    def frozen_database(bind):
+        release.wait(10)  # accepts the connection, never answers
+        return {"database": "ok"}
+    monkeypatch.setattr(main, "_database_probe", frozen_database)
+    started = time.perf_counter()
+    try:
+        r = client.get("/api/health/ready")
+    finally:
+        release.set()
+    assert time.perf_counter() - started < 3
+    assert r.status_code == 503 and r.json()["checks"]["database"] == "unavailable"
+    assert client.get("/api/health/live").status_code == 200
+
+
+def test_database_probe_fails_fast_against_a_server_that_accepts_but_never_answers():
+    """The real probe path: a NEW connection with connect_timeout, not a pooled connection that
+    would block forever on a frozen server (the kernel accepts the TCP connection)."""
+    from backend.app.main import _database_probe
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(8)
+    server.settimeout(0.2)
+    port, held, stop = server.getsockname()[1], [], threading.Event()
+
+    def accept_and_ignore():
+        while not stop.is_set():
+            try:
+                held.append(server.accept()[0])
+            except OSError:
+                continue
+    threading.Thread(target=accept_and_ignore, daemon=True).start()
+    bind = create_engine(f"postgresql+psycopg://probe:probe-pw@127.0.0.1:{port}/frozen")
+    started = time.perf_counter()
+    try:
+        checks = _database_probe(bind)
+    finally:
+        stop.set()
+        for conn in held:
+            conn.close()
+        server.close()
+        bind.dispose()
+    assert checks == {"database": "unavailable"}
+    assert time.perf_counter() - started < 6  # connect_timeout=2, not "until the client gives up"
+
+
+def _asgi(app, path="/api/x", linger=0.0):
+    """Drive an ASGI app once; `linger` keeps the loop alive so abandoned handlers can finish."""
+    messages = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    async def main():
+        await app({"type": "http", "method": "GET", "path": path, "headers": []}, receive, send)
+        await asyncio.sleep(linger)
+    asyncio.run(main())
+    return messages
+
+
+def _handler(delay=0.0, stream_delay=0.0, status=200):
+    async def app(scope, receive, send):
+        await asyncio.sleep(delay)
+        await send({"type": "http.response.start", "status": status, "headers": []})
+        await asyncio.sleep(stream_delay)
+        await send({"type": "http.response.body", "body": b"late" if delay else b"ok"})
+    return app
+
+
+def test_request_deadline_answers_503_and_discards_the_late_response():
+    from backend.app.observability.metrics import REQUEST_DEADLINE_EXCEEDED
+    from backend.app.observability.middleware import RequestDeadlineMiddleware
+
+    before = REQUEST_DEADLINE_EXCEEDED._value.get()
+    messages = _asgi(RequestDeadlineMiddleware(_handler(delay=0.3), seconds=0.1), linger=0.5)
+    starts = [m for m in messages if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [503]  # the handler's late 200 never reaches the client
+    assert (b"retry-after", b"5") in starts[0]["headers"]
+    body = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body")
+    assert b"late" not in body and b"please retry" in body
+    assert REQUEST_DEADLINE_EXCEEDED._value.get() == before + 1
+
+
+def test_request_deadline_leaves_fast_started_and_exempt_requests_alone():
+    from backend.app.observability.middleware import RequestDeadlineMiddleware
+
+    fast = _asgi(RequestDeadlineMiddleware(_handler(), seconds=0.5))
+    assert fast[0]["status"] == 200
+    # the response started before the deadline: a slow stream is not cut
+    streaming = _asgi(RequestDeadlineMiddleware(_handler(stream_delay=0.3), seconds=0.1))
+    assert streaming[0]["status"] == 200 and streaming[-1]["body"] == b"ok"
+    # liveness is exempt; 0 disables the deadline
+    assert _asgi(RequestDeadlineMiddleware(_handler(delay=0.2), seconds=0.05), path="/api/health/live")[0]["status"] == 200
+    assert _asgi(RequestDeadlineMiddleware(_handler(delay=0.2), seconds=0))[0]["status"] == 200
 
 
 def test_readiness_reports_unavailable_object_storage(scenario, monkeypatch):

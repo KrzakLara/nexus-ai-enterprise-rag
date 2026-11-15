@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
 import time
@@ -16,7 +18,7 @@ import uuid
 from starlette.datastructures import MutableHeaders
 
 from .logging import log_context
-from .metrics import HTTP_DURATION, HTTP_IN_PROGRESS, HTTP_REQUESTS
+from .metrics import HTTP_DURATION, HTTP_IN_PROGRESS, HTTP_REQUESTS, REQUEST_DEADLINE_EXCEEDED
 
 log = logging.getLogger("nexus.http")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -73,3 +75,62 @@ class RequestContextMiddleware:
                     "status": status["code"], "duration_ms": round(elapsed * 1000, 2),
                     "auth": ctx.get("auth")})
             log_context.reset(token)
+
+
+class RequestDeadlineMiddleware:
+    """Answer 503 + Retry-After when a request has not STARTED its response within `seconds`.
+
+    Protects clients from dependencies that hang instead of failing: a database that is frozen but
+    still accepts TCP (found by the resilience drill: requests waited until the client gave up),
+    a stalled object store, an IdP that never answers. Synchronous handlers cannot be interrupted,
+    so the abandoned handler keeps its worker thread until the dependency answers; its late
+    response is discarded. A response that has started (e.g. a streaming download) is never cut.
+    Retried writes stay safe through Idempotency-Key (uploads, deletions) and duplicate-job
+    detection. `seconds <= 0` disables the deadline; liveness is exempt.
+    """
+
+    def __init__(self, app, seconds: float, exempt_paths: tuple[str, ...] = ("/api/health/live",)):
+        self.app, self.seconds, self.exempt = app, seconds, exempt_paths
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or self.seconds <= 0 or scope.get("path", "") in self.exempt:
+            await self.app(scope, receive, send)
+            return
+        started = asyncio.Event()
+        state = {"abandoned": False}
+
+        async def guarded_send(message):
+            if state["abandoned"]:
+                return  # late answer of a request that already received its 503
+            if message["type"] == "http.response.start":
+                started.set()
+            await send(message)
+
+        handler = asyncio.ensure_future(self.app(scope, receive, guarded_send))
+        waiter = asyncio.ensure_future(started.wait())
+        try:
+            done, _ = await asyncio.wait({handler, waiter}, timeout=self.seconds,
+                                         return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            waiter.cancel()
+        if done:
+            await handler  # finished, or the response is under way: complete it normally
+            return
+        state["abandoned"] = True
+        handler.add_done_callback(_consume_result)
+        route = getattr(scope.get("route"), "path", None) or "unmatched"
+        REQUEST_DEADLINE_EXCEEDED.inc()
+        log.warning("request_deadline_exceeded", extra={"event": "request_deadline_exceeded", "route": route,
+                                                        "deadline_seconds": self.seconds})
+        body = json.dumps({"detail": "The service could not answer in time (a dependency may be "
+                                     "unavailable); please retry."}).encode()
+        await send({"type": "http.response.start", "status": 503,
+                    "headers": [(b"content-type", b"application/json"), (b"retry-after", b"5"),
+                                (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
+def _consume_result(task: asyncio.Future) -> None:
+    """Retrieve the abandoned handler's outcome so asyncio does not report it as unhandled."""
+    if not task.cancelled():
+        task.exception()

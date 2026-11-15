@@ -60,6 +60,12 @@ groups:
         annotations:
           summary: Requests were shed with 503 because every database connection was busy (saturation)
 
+      - alert: NexusRequestDeadlineExceeded
+        expr: increase(nexus_http_request_deadline_exceeded_total[5m]) > 0
+        labels: {severity: page}
+        annotations:
+          summary: Requests were answered 503 after REQUEST_TIMEOUT_SECONDS (a dependency hangs)
+
       - alert: NexusObjectStorageErrors
         expr: sum(rate(nexus_object_storage_operations_total{outcome="error"}[5m])) > 0
         for: 5m

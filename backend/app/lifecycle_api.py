@@ -214,8 +214,10 @@ def reindex_tenant(payload: ReindexIn | None = None, user: User = Depends(curren
     docs = db.scalars(authorized_documents(user).where(Document.lifecycle_state.in_(("ready", "failed")))
                       .limit(5000)).all()
     queued = 0
+    lifecycle.serialize_submissions(db, user.tenant_id, "reindex")  # one tenant lock, not one per document
     for doc in docs:
-        _, created = lifecycle.submit(db, user, "reindex", doc, {"force": bool(payload and payload.force)}, cfg)
+        _, created = lifecycle.submit(db, user, "reindex", doc, {"force": bool(payload and payload.force)}, cfg,
+                                      serialized=True)
         queued += int(created)
     audit(db, user, "tenant_reindex_request")
     db.commit()
