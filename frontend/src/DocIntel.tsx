@@ -17,7 +17,7 @@ function StatusBadge({ status }: { status: string | null }) {
   return <span className={`di-badge ${status}`}>{STATUS_LABELS[status] ?? status.replace(/_/g, ' ')}</span>;
 }
 
-export function DocIntelWorkspace({ token, user }: { token: string; user: User }) {
+export function DocIntelWorkspace({ user }: { user: User }) {
   const [tab, setTab] = useState<'library' | 'compare' | 'insights'>('library');
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,15 +26,15 @@ export function DocIntelWorkspace({ token, user }: { token: string; user: User }
   const [selected, setSelected] = useState<string[]>([]);
   const load = useCallback(async () => {
     setLoading(true);
-    try { setItems(await di.library(token)); setError(''); } catch (e) { setError((e as Error).message); }
+    try { setItems(await di.library()); setError(''); } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
-  }, [token]);
+  }, []);
   useEffect(() => { void load(); }, [load]);
   const open = items.find(i => i.id === openId);
-  if (open) return <DocumentDetail token={token} user={user} item={open} onBack={() => { setOpenId(null); void load(); }} />;
+  if (open) return <DocumentDetail user={user} item={open} onBack={() => { setOpenId(null); void load(); }} />;
   const toggle = (id: string) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   return <div className="content-view">
-    <div className="page-heading"><div><div className="eyebrow">PHASE 3 · DOCUMENT INTELLIGENCE</div>
+    <div className="page-heading"><div><div className="eyebrow">DOCUMENT INTELLIGENCE</div>
       <h1>Extraction & review<span>.</span></h1>
       <p>Layout-aware parsing (OCR for scans), structured contract and invoice fields with verbatim evidence,
         business validation and human review. Only documents you are authorized to read are listed.</p></div></div>
@@ -57,15 +57,15 @@ export function DocIntelWorkspace({ token, user }: { token: string; user: User }
         <td><StatusBadge status={i.review_status} /></td>
       </tr>)}
       {items.length === 0 && <tr><td colSpan={7} className="di-empty">{loading ? 'Loading documents…' : 'No documents you can read.'}</td></tr>}</tbody></table></div>}
-    {tab === 'compare' && <CompareView token={token} ids={selected} items={items} />}
-    {tab === 'insights' && <InsightsView token={token} selected={selected} items={items} />}
+    {tab === 'compare' && <CompareView ids={selected} items={items} />}
+    {tab === 'insights' && <InsightsView selected={selected} items={items} />}
     {!REVIEWER_ROLES.has(user.role) && <p className="di-note">You can inspect extractions. Correcting, approving and rejecting require the reviewer or admin role (enforced by the API).</p>}
   </div>;
 }
 
 // ------------------------------------------------------------------------------ document detail
 
-function DocumentDetail({ token, user, item, onBack }: { token: string; user: User; item: LibraryItem; onBack: () => void }) {
+function DocumentDetail({ user, item, onBack }: { user: User; item: LibraryItem; onBack: () => void }) {
   const [structure, setStructure] = useState<Structure | null>(null);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
@@ -73,11 +73,11 @@ function DocumentDetail({ token, user, item, onBack }: { token: string; user: Us
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     try {
-      const [s, e] = await Promise.all([di.structure(token, item.id), di.extraction(token, item.id)]);
+      const [s, e] = await Promise.all([di.structure(item.id), di.extraction(item.id)]);
       setStructure(s); setExtraction(e);
-      setHistory((await di.history(token, e.id)).events); setError('');
+      setHistory((await di.history(e.id)).events); setError('');
     } catch (err) { setError((err as Error).message); }
-  }, [token, item.id]);
+  }, [item.id]);
   useEffect(() => { void load(); }, [load]);
   return <div className="content-view">
     <button className="button secondary small di-back" onClick={onBack}><ArrowLeft size={15} /> All documents</button>
@@ -87,8 +87,8 @@ function DocumentDetail({ token, user, item, onBack }: { token: string; user: Us
     <div className="di-detail">
       <section className="di-structure">{structure && <StructureView structure={structure} focus={focus} />}</section>
       <section className="di-side">
-        {extraction && <ExtractionPanel token={token} canReview={REVIEWER_ROLES.has(user.role)} extraction={extraction}
-          onFocus={setFocus} onChange={async e => { setExtraction(e); setHistory((await di.history(token, e.id)).events); }} />}
+        {extraction && <ExtractionPanel canReview={REVIEWER_ROLES.has(user.role)} extraction={extraction}
+          onFocus={setFocus} onChange={async e => { setExtraction(e); setHistory((await di.history(e.id)).events); }} />}
         <div className="di-card"><h3><History size={16} /> Review history</h3>
           {history.length === 0 ? <p className="di-note">No events.</p> : <ol className="di-history">{history.map(h => <li key={h.id}>
             <strong>{h.action}</strong>{h.field && <> · <code>{h.field}</code></>} <small>v{h.version} · {h.user_id.slice(0, 8)} · {new Date(h.created_at).toLocaleString()}</small>
@@ -136,8 +136,8 @@ function issueText(i: Issue) {
   return `${i.message}${i.expected ? ` (expected ${i.expected}${i.actual ? `, found ${i.actual}` : ''})` : ''}`;
 }
 
-function ExtractionPanel({ token, extraction, canReview, onFocus, onChange }: {
-  token: string; extraction: Extraction; canReview: boolean; onFocus: (e: Evidence | null) => void; onChange: (e: Extraction) => void;
+function ExtractionPanel({ extraction, canReview, onFocus, onChange }: {
+  extraction: Extraction; canReview: boolean; onFocus: (e: Evidence | null) => void; onChange: (e: Extraction) => void;
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [comment, setComment] = useState('');
@@ -164,7 +164,7 @@ function ExtractionPanel({ token, extraction, canReview, onFocus, onChange }: {
       setMessage(e.message);
     }
   };
-  const save = () => run(() => di.correct(token, extraction.id, extraction.version,
+  const save = () => run(() => di.correct(extraction.id, extraction.version,
     Object.entries(draft).map(([name, value]) => ({ name, value: value.trim() === '' ? null : value }))), 'Corrections saved.');
   const field = (f: ExtractionField) => <tr key={f.name} className={`di-field ${f.state}`}>
     <td><code>{f.name}</code><small className="di-sub">{f.method}</small></td>
@@ -187,10 +187,10 @@ function ExtractionPanel({ token, extraction, canReview, onFocus, onChange }: {
     {editable && <div className="di-actions">
       <button className="button secondary small" disabled={Object.keys(draft).length === 0} onClick={() => void save()}>Save corrections</button>
       <input className="text-input" placeholder="Comment (required to reject)" value={comment} onChange={e => setComment(e.target.value)} />
-      <button className="button primary small" onClick={() => void run(() => di.approve(token, extraction.id, extraction.version, comment || undefined,
+      <button className="button primary small" onClick={() => void run(() => di.approve(extraction.id, extraction.version, comment || undefined,
         blocked ? override : undefined), 'Approved.')}><Check size={15} /> Approve</button>
       <button className="button secondary small" disabled={comment.trim().length < 3}
-        onClick={() => void run(() => di.reject(token, extraction.id, extraction.version, comment), 'Rejected.')}><X size={15} /> Reject</button>
+        onClick={() => void run(() => di.reject(extraction.id, extraction.version, comment), 'Rejected.')}><X size={15} /> Reject</button>
     </div>}
     {blocked && <div className="di-blocked"><strong>Approval blocked by {blocked.length} validation error(s).</strong>
       <ul>{blocked.map((i, k) => <li key={k}>{i.field}: {issueText(i)}</li>)}</ul>
@@ -202,11 +202,11 @@ function ExtractionPanel({ token, extraction, canReview, onFocus, onChange }: {
 
 // ------------------------------------------------------------------------------ compare / insights
 
-function CompareView({ token, ids, items }: { token: string; ids: string[]; items: LibraryItem[] }) {
+function CompareView({ ids, items }: { ids: string[]; items: LibraryItem[] }) {
   const [result, setResult] = useState<Comparison | null>(null);
   const [error, setError] = useState('');
   const go = async () => {
-    try { setResult(await di.compare(token, ids)); setError(''); } catch (e) { setError((e as Error).message); setResult(null); }
+    try { setResult(await di.compare(ids)); setError(''); } catch (e) { setError((e as Error).message); setResult(null); }
   };
   const title = (id: string) => items.find(i => i.id === id)?.title ?? id;
   return <div className="di-card">
@@ -225,7 +225,7 @@ function CompareView({ token, ids, items }: { token: string; ids: string[]; item
   </div>;
 }
 
-function InsightsView({ token, selected, items }: { token: string; selected: string[]; items: LibraryItem[] }) {
+function InsightsView({ selected, items }: { selected: string[]; items: LibraryItem[] }) {
   const [asOf, setAsOf] = useState(today());
   const [days, setDays] = useState(90);
   const [question, setQuestion] = useState('Which supplier contracts expire within 90 days?');
@@ -235,7 +235,7 @@ function InsightsView({ token, selected, items }: { token: string; selected: str
   const run = async (label: string, fn: () => Promise<Record<string, unknown>>) => {
     try { setResult({ title: label, data: await fn() }); setError(''); } catch (e) { setError((e as Error).message); setResult(null); }
   };
-  const query = (type: QueryType, label: string) => run(label, () => di.query(token, type, days, asOf));
+  const query = (type: QueryType, label: string) => run(label, () => di.query(type, days, asOf));
   const data = (result?.data.result ?? result?.data) as Record<string, unknown> | undefined;
   const matches = (data?.matches ?? []) as Record<string, unknown>[];
   return <div className="di-card">
@@ -247,7 +247,7 @@ function InsightsView({ token, selected, items }: { token: string; selected: str
       <button className="button secondary small" onClick={() => void query('invalid_invoices', 'Invoices failing validation')}>Invalid invoices</button>
       <button className="button secondary small" onClick={() => void query('conflicts', 'Conflicting information')}>Conflicts</button>
     </div>
-    <form className="di-ask" onSubmit={e => { e.preventDefault(); void run(question, () => di.ask(token, question, asOf, selected)); }}>
+    <form className="di-ask" onSubmit={e => { e.preventDefault(); void run(question, () => di.ask(question, asOf, selected)); }}>
       <input className="text-input" value={question} onChange={e => setQuestion(e.target.value)} aria-label="Question about your documents" />
       <button className="button primary small" type="submit">Ask</button>
     </form>

@@ -2,6 +2,60 @@
 
 All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). NEXUS AI is a **local demo**. No version is production-ready.
 
+## [0.4.0] - unreleased (branch `feat/phase4-enterprise-hardening`, stacked on 0.3.0) - Phase 4 enterprise hardening
+
+Overview: [docs/enterprise-hardening.md](docs/enterprise-hardening.md). Measured results:
+[docs/security-test-results.md](docs/security-test-results.md), [docs/performance-benchmarks.md](docs/performance-benchmarks.md).
+
+### Added
+- **OpenID Connect** (`AUTH_MODE=oidc`): Authorization Code Flow + PKCE (S256) through the backend
+  (BFF), discovery, JWKS cache with rate-limited refresh on unknown `kid` (key rotation), strict
+  validation (asymmetric algorithm allowlist, `iss`, `aud`, `azp`, `exp`/`nbf`/`iat`, `nonce`,
+  token `typ`), server-side sessions in HttpOnly / SameSite=Lax / `__Host-` cookies, CSRF tokens and
+  Origin checks, idle / absolute expiry, refresh-token revalidation (group removal, revoked IdP
+  sessions), RP-initiated and back-channel logout, bearer access tokens for API clients, identity
+  binding (issuer + subject), tenant / group / role mapping from IdP group paths under a server-side
+  tenant allowlist, verified-e-mail linking, JIT provisioning. Local **Keycloak 26.4.2** realm.
+- **Fail-closed configuration** (`APP_ENV`, `validate_settings`): demo authentication, insecure
+  cookies, local storage, inline processing, privileged DB roles, http IdP URLs and published
+  development secrets are refused in staging / production.
+- **PostgreSQL row-level security** (migration 0008): FORCE RLS on 15 tables, runtime roles
+  `nexus_app` / `nexus_worker` (NOBYPASSRLS), transaction-local security context per transaction,
+  worker job scope bound to a lease token, SECURITY DEFINER helpers in schema `nexus_rls`, column
+  privilege protection of password hashes, append-only audit.
+- **Durable background processing**: PostgreSQL-backed queue (`processing_jobs`, SKIP LOCKED
+  claims, leases, fencing tokens, exponential backoff with jitter, dead letter, crash recovery,
+  idempotency keys), `python -m backend.app.worker`, job types ingest / reprocess / reindex / purge,
+  job API (`/api/jobs`, retry, cancel), `PROCESSING_MODE=inline|queue`.
+- **Object storage** (S3 / MinIO, local): server-generated keys, server-side SHA-256 checks,
+  private bucket, optional short-lived presigned downloads, upload validation (content sniffing,
+  zip-bomb and archive limits, UTF-8 text), `document_versions`, **document lifecycle** (versions,
+  staged deletion with purge and tombstones, retention expiry), `scripts/storage_backfill.py`
+  (dry-run default, checksum-verified, resumable, never deletes local files),
+  `scripts/storage_reconcile.py`.
+- **Observability**: JSON logs with redaction, Prometheus metrics on an internal port,
+  OpenTelemetry tracing with trace-context propagation across the queue, liveness / readiness,
+  `compose.observability.yaml` (Prometheus 3.5.0, Grafana 12.1.1 with a provisioned dashboard,
+  Jaeger 2.10.0), alert rules.
+- **Verification**: security regression, RLS, OIDC (fake IdP and real Keycloak), MinIO, jobs and
+  lifecycle, observability test suites; `scripts/e2e_phase4.py`, `scripts/resilience_drill.py`,
+  `scripts/backup_restore_drill.py`, `scripts/benchmark_phase4.py`, k6 profiles
+  (`load/k6/nexus.js`, `scripts/run_load_test.py`), CI jobs for config validation and Docker E2E,
+  manual load-test workflow.
+- Frontend: SSO login, cookie sessions with CSRF (no token in `localStorage`), session restoration
+  and expiry handling, live processing status (real stages, no estimated percentages), retry,
+  lifecycle panel (versions, re-index, delete, processing history).
+
+### Changed
+- Docker Compose: `migrate` one-shot service (migrations, runtime roles, demo seed), `api` as
+  `nexus_app`, `worker` as `nexus_worker`, MinIO + `minio-init` (bucket-scoped access key),
+  same-origin `/api` proxy in the frontend container, non-root API image, overlays for OIDC,
+  observability and drills. The legacy `document_storage` volume is mounted read-only.
+- Authentication error bodies are `{"code", "message"}` objects. `/api/documents` and
+  `/api/documents/{id}` gain lifecycle fields.
+- Test suite: PostgreSQL API tests run as the runtime role with RLS enforced; a PostgreSQL advisory
+  lock prevents two concurrent test sessions on the same database.
+
 ## [0.3.0] - release candidate (not yet tagged) - Phase 3 document intelligence
 
 Release notes: [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md).

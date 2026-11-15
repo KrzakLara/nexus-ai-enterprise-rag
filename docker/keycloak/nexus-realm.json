@@ -1,0 +1,366 @@
+{
+  "realm": "nexus",
+  "displayName": "NEXUS AI (local development identity provider)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "revokeRefreshToken": false,
+  "defaultSignatureAlgorithm": "RS256",
+  "groups": [
+    {
+      "name": "tenants",
+      "subGroups": [
+        {
+          "name": "northstar",
+          "subGroups": [
+            {
+              "name": "groups",
+              "subGroups": [
+                {
+                  "name": "finance"
+                },
+                {
+                  "name": "legal"
+                },
+                {
+                  "name": "sales"
+                },
+                {
+                  "name": "hr"
+                },
+                {
+                  "name": "procurement"
+                }
+              ]
+            },
+            {
+              "name": "roles",
+              "subGroups": [
+                {
+                  "name": "admin"
+                },
+                {
+                  "name": "reviewer"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "otherco",
+          "subGroups": [
+            {
+              "name": "groups",
+              "subGroups": [
+                {
+                  "name": "finance"
+                }
+              ]
+            },
+            {
+              "name": "roles",
+              "subGroups": [
+                {
+                  "name": "reviewer"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@northstar.demo",
+      "email": "admin@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Workspace",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/finance",
+        "/tenants/northstar/groups/legal",
+        "/tenants/northstar/groups/sales",
+        "/tenants/northstar/groups/hr",
+        "/tenants/northstar/roles/admin"
+      ]
+    },
+    {
+      "username": "finance@northstar.demo",
+      "email": "finance@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Finance",
+      "lastName": "Analyst",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/finance",
+        "/tenants/northstar/groups/legal"
+      ]
+    },
+    {
+      "username": "hr@northstar.demo",
+      "email": "hr@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "HR",
+      "lastName": "Specialist",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/hr"
+      ]
+    },
+    {
+      "username": "sales@northstar.demo",
+      "email": "sales@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Sales",
+      "lastName": "Associate",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/sales",
+        "/tenants/northstar/groups/legal"
+      ]
+    },
+    {
+      "username": "finance@otherco.demo",
+      "email": "finance@otherco.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "External",
+      "lastName": "Finance",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/otherco/groups/finance"
+      ]
+    },
+    {
+      "username": "reviewer@northstar.demo",
+      "email": "reviewer@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Document",
+      "lastName": "Reviewer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/procurement",
+        "/tenants/northstar/groups/finance",
+        "/tenants/northstar/groups/legal",
+        "/tenants/northstar/roles/reviewer"
+      ]
+    },
+    {
+      "username": "procurement@northstar.demo",
+      "email": "procurement@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Procurement",
+      "lastName": "Analyst",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/procurement"
+      ]
+    },
+    {
+      "username": "nogroups@northstar.demo",
+      "email": "nogroups@northstar.demo",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "No",
+      "lastName": "Membership",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": []
+    },
+    {
+      "username": "ambiguous@demo.test",
+      "email": "ambiguous@demo.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Two",
+      "lastName": "Tenants",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DemoPass123!",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/tenants/northstar/groups/finance",
+        "/tenants/otherco/groups/finance"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "nexus-bff",
+      "name": "NEXUS AI backend-for-frontend (LOCAL DEV)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "nexus-bff-local-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "http://localhost:5173/api/auth/oidc/callback",
+        "http://127.0.0.1:5173/api/auth/oidc/callback",
+        "http://localhost:8000/api/auth/oidc/callback",
+        "http://127.0.0.1:8000/api/auth/oidc/callback",
+        "http://localhost:8001/api/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://127.0.0.1:5173/*##http://localhost:8000/*",
+        "backchannel.logout.url": "http://api:8000/api/auth/oidc/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "true",
+            "claim.name": "groups",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "nexus-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "nexus-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "basic"
+      ]
+    },
+    {
+      "clientId": "nexus-loadtest",
+      "name": "LOCAL DEV/TEST ONLY: password grant for automated tests and k6",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "nexus-loadtest-local-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "true",
+            "claim.name": "groups",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "nexus-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "nexus-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "basic"
+      ]
+    }
+  ]
+}

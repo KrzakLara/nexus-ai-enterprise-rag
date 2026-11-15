@@ -1,6 +1,8 @@
-import { API_BASE } from './api';
+import { request, type Job } from './api';
 
-/** Phase 3 document-intelligence API (backend/app/docintel_api.py). */
+export { ApiError } from './api';
+
+/** Phase 3 document-intelligence API (backend/app/docintel_api.py); cookie session since Phase 4. */
 export type BBox = { x0: number; top: number; x1: number; bottom: number };
 export type Issue = { field: string; code: string; severity: 'error' | 'warning'; message: string;
   expected?: string | null; actual?: string | null };
@@ -46,47 +48,29 @@ export type Comparison = {
 };
 export type QueryType = 'expiring_within' | 'auto_renewal' | 'invalid_invoices' | 'conflicts';
 
-export class ApiError extends Error {
-  constructor(public status: number, public detail: unknown) {
-    super(typeof detail === 'string' ? detail : (detail as { message?: string })?.message ?? `HTTP ${status}`);
-  }
-}
-
-async function call<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, { ...init,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
-  } catch {
-    throw new ApiError(0, `Cannot connect to API at ${API_BASE}.`);
-  }
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(response.status, (body as { detail?: unknown }).detail ?? `HTTP ${response.status}`);
-  return body as T;
-}
-
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
 
 export const di = {
-  library: (t: string) => call<LibraryItem[]>(t, '/api/intelligence/documents'),
-  structure: (t: string, id: string) => call<Structure>(t, `/api/documents/${id}/structure`),
-  extraction: (t: string, id: string) => call<Extraction>(t, `/api/documents/${id}/extraction`),
-  process: (t: string, id: string, body: { force?: boolean; doc_type?: string }) =>
-    call<Extraction>(t, `/api/documents/${id}/process`, post(body)),
-  history: (t: string, eid: string) => call<{ events: HistoryEvent[] }>(t, `/api/extractions/${eid}/history`),
-  correct: (t: string, eid: string, expected_version: number,
+  library: () => request<LibraryItem[]>('/api/intelligence/documents'),
+  structure: (id: string) => request<Structure>(`/api/documents/${id}/structure`),
+  extraction: (id: string) => request<Extraction>(`/api/documents/${id}/extraction`),
+  /** Inline mode returns the extraction; queue mode answers 202 with the job to poll. */
+  process: (id: string, body: { force?: boolean; doc_type?: string }) =>
+    request<Extraction | { document_id: string; job: Job }>(`/api/documents/${id}/process`, post(body)),
+  history: (eid: string) => request<{ events: HistoryEvent[] }>(`/api/extractions/${eid}/history`),
+  correct: (eid: string, expected_version: number,
             corrections: { name: string; value: string | null; comment?: string }[]) =>
-    call<Extraction>(t, `/api/extractions/${eid}/fields`, { method: 'PATCH', body: JSON.stringify({ expected_version, corrections }) }),
-  approve: (t: string, eid: string, expected_version: number, comment?: string, override_reason?: string) =>
-    call<Extraction>(t, `/api/extractions/${eid}/approve`, post({ expected_version, comment, override_reason })),
-  reject: (t: string, eid: string, expected_version: number, comment: string) =>
-    call<Extraction>(t, `/api/extractions/${eid}/reject`, post({ expected_version, comment })),
-  compare: (t: string, document_ids: string[]) => call<Comparison>(t, '/api/intelligence/compare', post({ document_ids })),
-  query: (t: string, type: QueryType, days: number, as_of: string) =>
-    call<Record<string, unknown>>(t, '/api/intelligence/query', post({ type, days, as_of })),
-  ask: (t: string, question: string, as_of: string, document_ids: string[]) =>
-    call<{ interpreted_as: string; parameters: Record<string, unknown>; result: Record<string, unknown>; method: string }>(
-      t, '/api/intelligence/ask', post({ question, as_of, document_ids: document_ids.length ? document_ids : null })),
+    request<Extraction>(`/api/extractions/${eid}/fields`, { method: 'PATCH', body: JSON.stringify({ expected_version, corrections }) }),
+  approve: (eid: string, expected_version: number, comment?: string, override_reason?: string) =>
+    request<Extraction>(`/api/extractions/${eid}/approve`, post({ expected_version, comment, override_reason })),
+  reject: (eid: string, expected_version: number, comment: string) =>
+    request<Extraction>(`/api/extractions/${eid}/reject`, post({ expected_version, comment })),
+  compare: (document_ids: string[]) => request<Comparison>('/api/intelligence/compare', post({ document_ids })),
+  query: (type: QueryType, days: number, as_of: string) =>
+    request<Record<string, unknown>>('/api/intelligence/query', post({ type, days, as_of })),
+  ask: (question: string, as_of: string, document_ids: string[]) =>
+    request<{ interpreted_as: string; parameters: Record<string, unknown>; result: Record<string, unknown>; method: string }>(
+      '/api/intelligence/ask', post({ question, as_of, document_ids: document_ids.length ? document_ids : null })),
 };
 
 export const STATUS_LABELS: Record<string, string> = {

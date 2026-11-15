@@ -62,9 +62,24 @@ def runtime_engines(admin_engine, url: str):
 def pg_url():
     if not PG_URL:
         pytest.skip("TEST_DATABASE_URL not set (PostgreSQL + pgvector integration tests)")
+    # One test session per disposable database: a second concurrent pytest run would TRUNCATE
+    # tables under the first one's open transactions and both would block. Fail fast instead.
+    from sqlalchemy.engine import make_url
+
+    target = make_url(PG_URL)
+    guard = create_engine(target.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    conn = guard.connect()
+    if not conn.execute(text("SELECT pg_try_advisory_lock(hashtext(:k))"),
+                        {"k": f"nexus-pytest:{target.database}"}).scalar():
+        conn.close()
+        guard.dispose()
+        pytest.exit(f"another test session is already using {target.database!r}; refusing to run concurrently",
+                    returncode=3)
     url = recreate_pg_database(PG_URL)
     migrate(url)  # the real Alembic migrations, not create_all()
-    return url
+    yield url
+    conn.close()  # releases the session-level advisory lock
+    guard.dispose()
 
 
 @pytest.fixture(scope="session")

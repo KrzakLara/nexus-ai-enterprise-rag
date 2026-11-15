@@ -1,0 +1,70 @@
+# Overlay: OpenID Connect with a local Keycloak (LOCAL DEVELOPMENT IdP, realm import
+# docker/keycloak/nexus-realm.json with synthetic users, password "DemoPass123!").
+#
+#   docker compose -f compose.yaml -f compose.oidc.yaml up --build
+#   open http://localhost:5173 -> "Sign in with SSO" -> e.g. finance@northstar.demo
+#
+# The API switches to AUTH_MODE=oidc: demo password login and demo JWTs are disabled; the browser
+# only holds an HttpOnly session cookie; tokens stay server-side. Keycloak's admin console
+# (http://localhost:8080/admin) uses the bootstrap admin below (local-only defaults).
+#
+# Hostnames: the browser reaches Keycloak at http://localhost:8080 (= token issuer); the API
+# reaches it at http://keycloak:8080 (KC_HOSTNAME_BACKCHANNEL_DYNAMIC gives back-channel URLs on
+# the internal name). Keycloak calls back-channel logout at http://api:8000.
+
+x-oidc-env: &oidc-env
+  AUTH_MODE: oidc
+  DEMO_MODE: "false"
+  OIDC_ISSUER: http://localhost:8080/realms/nexus
+  OIDC_DISCOVERY_URL: http://keycloak:8080/realms/nexus/.well-known/openid-configuration
+  OIDC_CLIENT_ID: nexus-bff
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-nexus-bff-local-dev-secret-change-me}
+  OIDC_REDIRECT_URI: http://localhost:5173/api/auth/oidc/callback
+  OIDC_POST_LOGOUT_REDIRECT_URI: http://localhost:5173/
+  OIDC_ALLOWED_TENANTS: northstar,otherco
+  OIDC_LINK_VERIFIED_EMAIL: "true"          # links Keycloak users to the seeded demo accounts
+  OIDC_ALLOW_INSECURE_HTTP: "true"          # plain http to a LOCAL Keycloak only (refused outside APP_ENV=local/test)
+  OIDC_API_AUDIENCE: nexus-api
+  # 32 random bytes, base64. LOCAL-ONLY default; generate your own:
+  #   python -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+  SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:-bG9jYWwtb25seS1kZXYta2V5LWRvLW5vdC1yZXVzZSE=}
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.2
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-kc-local-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-kc-local-admin-secret}
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./docker/keycloak/nexus-realm.json:/opt/keycloak/data/import/nexus-realm.json:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8080}:8080"
+    healthcheck:
+      # the image has no curl: plain bash TCP request to the management port
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    deploy:
+      resources:
+        limits: {memory: 1500m}
+
+  api:
+    environment:
+      <<: *oidc-env
+    depends_on:
+      keycloak: {condition: service_healthy}
+
+  worker:
+    environment:
+      <<: *oidc-env
+
+  migrate:
+    environment:
+      <<: *oidc-env

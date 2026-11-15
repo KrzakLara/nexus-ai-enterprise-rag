@@ -3,6 +3,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  MINIO_IMAGE: cgr.dev/chainguard/minio@sha256:18c8fa28697b25e0f34c6faae171079e88a03efb8e76a21d3b5d07b4e3cbef3e
+  KEYCLOAK_IMAGE: quay.io/keycloak/keycloak:26.4.2
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -18,16 +25,35 @@ jobs:
           --health-cmd "pg_isready -U nexus -d nexus" --health-interval 5s
           --health-timeout 3s --health-retries 20
     env:
-      # Integration tests DROP and re-create this *_test database.
+      # Integration tests DROP and re-create this *_test database. The API under test connects as
+      # the runtime role nexus_app (row-level security enforced), inline jobs as nexus_worker.
       TEST_DATABASE_URL: postgresql+psycopg://nexus:ci_only@localhost:5432/nexus_test
+      TEST_S3_ENDPOINT_URL: http://127.0.0.1:9000
+      TEST_S3_ACCESS_KEY: minio-test-admin
+      TEST_S3_SECRET_KEY: minio-test-admin-secret
+      TEST_KEYCLOAK_URL: http://localhost:8080
+      TEST_KEYCLOAK_ADMIN: kc-test-admin
+      TEST_KEYCLOAK_ADMIN_PASSWORD: kc-test-admin-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install uv==0.13.7
+      - name: Start MinIO (S3 integration) and Keycloak (real OIDC integration)
+        run: |
+          docker run -d --name minio -p 127.0.0.1:9000:9000 --tmpfs /data:rw,uid=65532,gid=65532 \
+            -e MINIO_ROOT_USER=minio-test-admin -e MINIO_ROOT_PASSWORD=minio-test-admin-secret \
+            "$MINIO_IMAGE" server /data --address :9000
+          docker run -d --name keycloak -p 127.0.0.1:8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=kc-test-admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=kc-test-admin-secret \
+            -e KC_HOSTNAME=http://localhost:8080 -e KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true -e KC_HTTP_ENABLED=true \
+            -v "$GITHUB_WORKSPACE/docker/keycloak/nexus-realm.json:/opt/keycloak/data/import/nexus-realm.json:ro" \
+            "$KEYCLOAK_IMAGE" start-dev --import-realm
       - name: Tesseract OCR (English + Croatian) for Phase 3 scanned-document tests and gates
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-hrv
+      - name: Dependency lock consistency
+        run: uv lock --check
       - run: uv sync --locked --extra dev
       - name: Cache embedding model
         uses: actions/cache@v4
@@ -35,8 +61,14 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-intfloat-multilingual-e5-small-v1
       - run: uv run ruff check backend scripts
-      - name: Tests (SQLite + PostgreSQL/pgvector + real embedding model)
-        run: uv run pytest -q -rs --cov=backend/app --cov-report=term
+      - name: Wait for MinIO and Keycloak
+        run: |
+          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null && break; sleep 2; done
+          for i in $(seq 1 90); do curl -fsS http://localhost:8080/realms/nexus >/dev/null && break; sleep 2; done
+          curl -fsS http://localhost:8080/realms/nexus/.well-known/openid-configuration >/dev/null
+      - name: Tests (SQLite + PostgreSQL/RLS + MinIO + Keycloak + real embedding model)
+        # Fails on any test failure; coverage below the measured floor fails too.
+        run: uv run pytest -q -rs --cov=backend/app --cov-report=term --cov-fail-under=90
       - name: Evaluation gates (frozen dataset, test split, real embeddings in PostgreSQL)
         # Fails on: malformed/stale ground truth, any authorization violation, invalid citations,
         # retrieval below eval/ci_thresholds.json, hybrid abstention below its floor.
@@ -67,6 +99,9 @@ jobs:
           uv run python scripts/seed_demo.py
           uv run python scripts/embed_backfill.py
           uv run python scripts/evaluate_retrieval.py
+      - name: Service logs on failure
+        if: failure()
+        run: docker logs keycloak --tail 200; docker logs minio --tail 100
 
   frontend:
     runs-on: ubuntu-latest
@@ -80,4 +115,62 @@ jobs:
       - working-directory: frontend
         run: npm ci --no-audit --no-fund
       - working-directory: frontend
-        run: npm run build
+        run: npm run build   # tsc -b (strict type check) + vite production build
+
+  config:
+    # Static validation of the deployment / observability configuration.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose files render (base, OIDC, observability, drill overlays)
+        run: |
+          docker compose -f compose.yaml config -q
+          docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml -f compose.drill.yaml config -q
+      - name: Prometheus configuration and alert rules (promtool)
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/docker/observability:/cfg:ro" prom/prometheus:v3.5.0 \
+            check rules /cfg/alerts.yml
+          docker run --rm --entrypoint sh -v "$PWD/docker/observability:/cfg:ro" prom/prometheus:v3.5.0 \
+            -c "sed 's#/etc/prometheus/alerts.yml#/cfg/alerts.yml#' /cfg/prometheus.yml > /tmp/p.yml && promtool check config /tmp/p.yml"
+      - name: Grafana dashboard is generated from the metric definitions and valid JSON
+        run: |
+          python3 scripts/build_grafana_dashboard.py
+          git diff --exit-code docker/observability/grafana/dashboards/
+          python3 -m json.tool docker/observability/grafana/dashboards/nexus-operations.json >/dev/null
+      - name: Workflow lint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
+  docker-e2e:
+    # Full stack in Docker: db, MinIO, migrate, api (nexus_app), worker (nexus_worker), frontend,
+    # Keycloak and the observability stack; then the Phase 4 end-to-end checks and a k6 smoke run.
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, config]
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: nexus-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install httpx==0.28.1 reportlab==4.2.5 python-docx==1.1.2
+      - name: Build and start the stack
+        run: |
+          docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml up -d --build --wait --wait-timeout 900
+      - name: Phase 4 end-to-end checks (OIDC, MinIO, worker, RLS, metrics, traces, lifecycle, logout)
+        run: |
+          python scripts/e2e_phase4.py --project nexus-ci --files compose.yaml,compose.oidc.yaml,compose.observability.yaml \
+            --report eval/phase4/e2e-ci.json
+      - name: k6 smoke profile (real requests, multiple tenants, zero authorization violations)
+        run: python scripts/run_load_test.py --profile smoke --project nexus-ci
+      - name: Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-e2e-reports
+          path: |
+            eval/phase4/e2e-ci.json
+            eval/phase4/load/smoke.json
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml logs --no-color --tail 300

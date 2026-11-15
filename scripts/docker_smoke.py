@@ -60,13 +60,33 @@ def login(email):
 
 
 def upload(token, filename, data, groups):
+    """Upload; with PROCESSING_MODE=queue (Phase 4 Compose) the API answers 202 and a background
+    worker processes the job: wait for it and return the same shape as the inline (201) answer."""
     boundary = uuid.uuid4().hex
     parts = [f"--{boundary}\r\nContent-Disposition: form-data; name=\"groups\"\r\n\r\n{groups}\r\n".encode(),
              f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
              "Content-Type: application/octet-stream\r\n\r\n".encode() + data + b"\r\n",
              f"--{boundary}--\r\n".encode()]
-    return call("/api/documents", token=token, raw=b"".join(parts),
-                content_type=f"multipart/form-data; boundary={boundary}")
+    status, body = call("/api/documents", token=token, raw=b"".join(parts),
+                        content_type=f"multipart/form-data; boundary={boundary}")
+    if status != 202:
+        return status, body
+    accepted = json.loads(body)
+    job = accepted["job"]
+    for _ in range(600):
+        job = json.loads(call(f"/api/jobs/{job['id']}", token=token)[1])
+        if job["status"] in ("completed", "failed", "cancelled"):
+            break
+        time.sleep(0.5)
+    if job["status"] != "completed":
+        return 500, json.dumps({"job": job}).encode()
+    listed = {d["id"]: d for d in json.loads(call("/api/documents", token=token)[1])}
+    doc = listed[accepted["id"]]
+    result = job.get("result") or {}
+    return 201, json.dumps({"id": accepted["id"], "title": doc["title"], "pages": result.get("pages"),
+                            "fields_extracted": len(doc.get("fields") or {}),
+                            "embedding_status": result.get("embedding_status", ""),
+                            "processing": doc.get("intelligence"), "job": job}).encode()
 
 
 def ask(token, question, **extra):
