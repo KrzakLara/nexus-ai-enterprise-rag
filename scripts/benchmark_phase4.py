@@ -110,14 +110,16 @@ def bench_rls(admin_factory, app_factory, rng, repeats: int) -> dict:
     with admin_factory() as db:
         users = {u.id: u for u in db.query(User)}
     for mode in ("lexical", "semantic", "hybrid"):
+        # PAIRED comparison: every role / persona runs the SAME query list (an earlier version drew
+        # new random queries per cell, so query mix noise dominated the RLS difference)
+        queries = [" ".join(rng.choice(WORDS) for _ in range(4)) for _ in range(repeats + 5)]
         for role, factory in (("bypass_rls_migration_role", admin_factory), ("nexus_app_rls", app_factory)):
             for persona in ("b_admin", "b_member"):
                 user = users[persona]
                 times = []
                 with factory() as db:
                     set_security_context(db, user_context(user.tenant_id, user.id))
-                    for i in range(repeats + 5):
-                        q = " ".join(rng.choice(WORDS) for _ in range(4))
+                    for i, q in enumerate(queries):
                         t0 = time.perf_counter()
                         if mode == "lexical":
                             hits = fts_search(db, user, q, 10)

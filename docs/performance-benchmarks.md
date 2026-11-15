@@ -134,6 +134,48 @@ clamped since `543ffde`.
      The script was fixed in `a67003e`; the API had correctly answered 401.
    - The JWKS cache was hardened in `004cf47`.
 
+## Component benchmarks
+
+`scripts/benchmark_phase4.py` ran inside the API image (Linux under WSL2, Python
+3.12.16, 8 CPUs, Tesseract, the cached embedding model). It used a disposable
+PostgreSQL 16 database on the test cluster, with a synthetic corpus of 600 documents /
+2400 chunks in two tenants. Report: `eval/phase4/benchmarks.json` (2026-11-15 19:46 UTC).
+Each cell has 60 measurements after 5 warm-up queries, from a single run on one machine.
+
+### Row-level security overhead (same retrieval functions, same 65 queries per mode)
+
+| Mode | Persona | Without RLS (superuser) p50 / p95 ms | `nexus_app` with RLS p50 / p95 ms | Difference at p50 |
+|---|---|---|---|---|
+| lexical | member (group grants) | 7.7 / 10.6 | 27.2 / 33.0 | +19.5 ms (+252 %) |
+| lexical | tenant admin | 10.9 / 14.7 | 12.5 / 14.5 | +1.6 ms (+14 %) |
+| semantic | member (group grants) | 3.9 / 6.0 | 13.4 / 16.6 | +9.5 ms (+244 %) |
+| semantic | tenant admin | 5.3 / 6.6 | 8.7 / 17.8 | +3.4 ms (+64 %) |
+| hybrid | member (group grants) | 26.8 / 33.5 | 45.5 / 54.7 | +18.8 ms (+70 %) |
+| hybrid | tenant admin | 33.3 / 35.2 | 22.4 / 26.8 | -10.8 ms (-32 %) |
+
+- **For group members, RLS costs +10 to +20 ms per retrieval query on this corpus**, 1.7–3.5×
+  the SQL time without RLS. The policies evaluate the grant check, a hashed subquery through
+  `SECURITY DEFINER` helpers, as security-barrier predicates in addition to the application ACL.
+- Against the ~1 s per answer measured in the load tests, this is small. It grows with the number
+  of documents a user can reach, so it **must be re-measured at production corpus sizes**.
+- Candidate optimizations, not implemented: partial indexes per tenant, and grant arrays carried
+  in the transaction context.
+- For tenant admins the difference ranges from +14 % to +64 %. Hybrid retrieval is faster under
+  RLS (−33 %), consistently across two runs: the policy's tenant predicate prunes the other
+  tenant's rows before ranking.
+- An earlier run drew different random queries for each cell and showed −51 % to +143 %, which
+  was query-mix noise. The script now uses one paired query list per mode.
+
+### Other components
+
+| Component | Result |
+|---|---|
+| Session validation through the full ASGI stack (`GET /api/auth/session`) | cookie session 12.2 ms p50 (session row lookup + touch) vs demo bearer JWT 10.8 ms |
+| Queue overhead (claim + complete, no handler work, 300 jobs) | 209 jobs/s with 1 thread, 200 jobs/s with 4 threads: ~5 ms per job, negligible against ~0.6 s of processing per document; parallel claimers add no throughput on one database node (commit-bound) |
+| Embeddings (`multilingual-e5-small`, CPU, batch 32) | 24.2 passages/s; single query 23.9 ms p50 / 32.0 ms p95 |
+| Parsing (Phase 3 corpus, p50 / p95) | PDF 33.8 / 73.2 ms (n=10), DOCX 26.9 / 28.1 ms (n=4), XLSX 10.7 / 92.0 ms (n=3), TXT 0.4 / 1.1 ms (n=4), MD 0.3 / 0.7 ms (n=3) |
+| OCR (scanned PDFs, Tesseract eng+hrv with deskew) | 3022.5 / 5820.3 ms (n=8) per document; 2.93 s per scanned page (the earlier run on the same machine: 3.64 s, so expect about ±20 % between runs) |
+
 ## Failure-injection drill
 
 `scripts/resilience_drill.py` injects real faults into the running stack: processes are killed,

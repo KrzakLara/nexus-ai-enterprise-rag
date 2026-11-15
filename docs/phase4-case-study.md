@@ -59,6 +59,25 @@ pipeline, on PostgreSQL as the RLS runtime roles.
 5. **Two concurrent pytest sessions on one database.** A stopped background run left its Python
    process alive; its fixtures truncated tables under the other run's open transactions and both
    blocked. The test session now takes a PostgreSQL advisory lock and refuses to run concurrently.
+6. **Load testing locked Keycloak accounts.** The first moderate run answered 79 % of requests
+   with 401. Keycloak's brute-force quick-login check locks an account that logs in twice within a
+   second, and the k6 script logged five shared accounts in from many virtual users at once. It
+   then cached Keycloak's error answer as a token and sent `Bearer undefined`. The API was right
+   to refuse; the harness now logs each account in once and renews with refresh tokens.
+7. **Saturation produced HTTP 500.** Under 40 virtual users on 8 CPUs the 15-connection pool ran
+   dry and SQLAlchemy's checkout timeout surfaced as "Exception in ASGI application". It is now a
+   503 with `Retry-After`, counted and alerted. In the measured stress run, 3.3 % of requests were
+   shed this way.
+8. **A frozen database hung requests.** In the failure-injection drill, `docker pause` on
+   PostgreSQL left readiness and API requests waiting on pooled connections until the client gave
+   up. A frozen server's kernel still accepts TCP, and libpq has no client-side query timeout.
+   - Readiness probes are now bounded and use a new connection with `connect_timeout`.
+   - A request deadline answers 503 when no response has started.
+9. **Duplicate-job detection was not atomic.** The check "is a job already running for this
+   document?" passed for two simultaneous requests. In sequential tests the race never showed,
+   because the queue finished a re-index within ~140 ms.
+   - Advisory locks per document now serialize submissions.
+   - A mutation test proves the concurrency test fails without them.
 
 ## What remains out of scope
 
