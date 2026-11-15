@@ -1,0 +1,6 @@
+# Triaged gitleaks findings (not credentials). Each entry is a fingerprint commit:file:rule:line.
+# backend/tests/test_observability.py: secret-SHAPED synthetic inputs of the log-redaction test
+# (fake JWT / refresh token / AWS-style key id); marked `gitleaks:allow` since 543ffde.
+f5eb76d0be7b83e17195b32acdf524ad65e428dc:backend/tests/test_observability.py:aws-access-token:29
+f5eb76d0be7b83e17195b32acdf524ad65e428dc:backend/tests/test_observability.py:generic-api-key:24
+f5eb76d0be7b83e17195b32acdf524ad65e428dc:backend/tests/test_observability.py:generic-api-key:27
