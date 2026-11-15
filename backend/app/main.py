@@ -1,40 +1,53 @@
-"""NEXUS AI API: a local, inspectable enterprise document intelligence vertical slice.
+"""NEXUS AI API: enterprise document intelligence with permission-scoped hybrid RAG.
 
-WARNING: demo auth is intentionally NOT suitable for internet-facing deployment.
+Phase 4 (enterprise hardening): OIDC authentication with server-side sessions (AUTH_MODE=oidc)
+next to the explicitly local demo mode, PostgreSQL row-level security below the application ACL,
+durable background processing, S3-compatible object storage with a full document lifecycle,
+structured logs, Prometheus metrics and OpenTelemetry traces. See docs/enterprise-hardening.md.
 """
 import logging
 from contextlib import asynccontextmanager
-from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
 from anyio import to_thread
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, sessionmaker
 
-from .auth import current_user, make_token, verify_password
-from .config import settings
-from .database import engine, get_db
+from . import lifecycle
+from .auth import current_user
+from .config import assert_secure_configuration, settings
+from .database import assert_runtime_role, engine, get_db, worker_engine
 from .docintel.ocr import ocr_available
+from .docintel.parsing import parse_document
+from .docintel_api import router as docintel_router
+from .docintel_api import summary as intelligence_summary
 from .embeddings import Embedder, EmbeddingError, get_embedder
 from .evidence import EvidencePolicy, assess
 from .extractive import select_evidence
-from .indexing import embed_pending_chunks
-from .migrate import assert_schema_current
-from .models import AuditEvent, Chunk, Document, DocumentGrant, User
-from .docintel import service as docintel
-from .docintel.parsing import UnsupportedFormat, parse_document
-from .docintel_api import router as docintel_router
-from .docintel_api import summary as intelligence_summary
-from .parsers import extract_contract_fields, split_page
+from .identity.routes import router as auth_router
+from .identity.routes import user_view
+from .jobs import queue
+from .lifecycle_api import router as lifecycle_router
+from .lifecycle_api import stream_object
+from .migrate import assert_schema_current, current_revision, head_revision
+from .models import AuditEvent, Chunk, Document, DocumentGrant, ProcessingJob, User, WorkerHeartbeat
+from .observability.logging import configure_logging
+from .observability.metrics import (DB_POOL, QUEUE_DEPTH, RAG_DURATION, RETRIEVAL_DURATION,
+                                    register_collectors, start_metrics_server)
+from .observability.middleware import RequestContextMiddleware
+from .observability.tracing import init_tracing, span
 from .rag import answer
 from .retrieval import RetrievalMode, RetrievalUnavailable, retrieve
 from .security import audit, authorized_documents, permitted_document
+from .storage import StorageError, default_store
+from .uploads import UploadRejected, validate_upload
 
 log = logging.getLogger("nexus")
 
@@ -52,11 +65,34 @@ def warm_up_embedder() -> str:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if not settings.demo_mode:
-        raise RuntimeError("Production identity/SSO is NOT implemented. Run only in local DEMO_MODE.")
+    configure_logging(settings.service_name, settings.app_env, settings.log_level, settings.log_format)
+    # Fail closed: demo credentials can never activate in a production-like environment, and OIDC
+    # mode refuses to start without issuer / client / redirect / session key configuration.
+    assert_secure_configuration(settings)
     # Schema is owned by Alembic (python scripts/migrate.py); fail fast instead of create_all().
     assert_schema_current(engine)
-    settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    role = assert_runtime_role(engine, settings.db_require_rls_role)
+    if settings.storage_backend == "local":
+        settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    elif settings.s3_create_bucket:
+        default_store(settings).ensure_bucket()
+    register_collectors()
+    DB_POOL.register("api", engine)
+    if settings.worker_database_url:
+        DB_POOL.register("worker", worker_engine())
+    sessions = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def queue_stats():
+        with sessions() as db:
+            return queue.queue_stats(db)
+
+    QUEUE_DEPTH.set_source(queue_stats)
+    start_metrics_server(settings.metrics_port)
+    init_tracing(settings, settings.service_name, app=app, engines=[engine])
+    log.info("api_started", extra={"event": "api_started", "auth_mode": settings.auth_mode,
+                                   "processing_mode": settings.processing_mode,
+                                   "storage_backend": settings.storage_backend,
+                                   "db_role": (role or {}).get("name")})
     if settings.embedding_warmup and engine.dialect.name == "postgresql":
         # In a worker thread: the event loop is not blocked while the model loads.
         await to_thread.run_sync(warm_up_embedder)
@@ -65,23 +101,22 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="NEXUS AI — Enterprise Knowledge Intelligence",
-    description="Secure-by-query RAG baseline with verifiable document evidence (LOCAL DEMO ONLY)",
-    version="0.3.0",
+    description="Permission-scoped hybrid RAG and document intelligence with verifiable evidence",
+    version=settings.service_version,
     lifespan=lifespan,
 )
+app.include_router(auth_router)
 app.include_router(docintel_router)
+app.include_router(lifecycle_router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origins=list(settings.frontend_origins),
+    allow_credentials=True,  # cookie sessions from the configured frontend origins only
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
-
-
-class LoginIn(BaseModel):
-    email: str
-    password: str
+app.add_middleware(RequestContextMiddleware)
 
 
 EVIDENCE_POLICY = EvidencePolicy(
@@ -123,11 +158,17 @@ def home():
     return RedirectResponse(url="/docs")
 
 
+# ----------------------------------------------------------------------------- health
+
 @app.get("/api/health")
 def health():
+    """Public capability summary for the UI (no hostnames, credentials or error details)."""
     return {
         "status": "ok",
-        "mode": "local_demo",
+        "mode": "local_demo" if settings.demo_auth else "oidc",
+        "auth_mode": settings.auth_mode,
+        "processing_mode": settings.processing_mode,
+        "storage_backend": settings.storage_backend,
         "version": app.version,
         "database": engine.dialect.name,
         "semantic_retrieval": engine.dialect.name == "postgresql",
@@ -141,31 +182,83 @@ def health():
     }
 
 
-@app.post("/api/auth/login")
-def login(payload: LoginIn, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == payload.email.lower().strip()))
-    if not user or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(401, "Invalid credentials")
-    return {
-        "access_token": make_token(user),
-        "token_type": "bearer",
-        "user": {
-            "email": user.email,
-            "groups": user.groups,
-            "role": user.role,
-            "tenant": user.tenant_id,
-        },
-    }
+@app.get("/api/health/live")
+def liveness():
+    """The process is running and serving HTTP. Never touches dependencies (no restart loops
+    because the database is briefly unavailable)."""
+    return {"status": "alive"}
 
+
+@app.get("/api/health/ready")
+def readiness(response: Response, db: Session = Depends(get_db)):
+    """Ready to serve traffic: critical dependencies reachable. Component states only: no hosts,
+    versions, credentials or exception texts."""
+    checks: dict[str, str] = {}
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        checks["database"] = "unavailable"
+    if checks["database"] == "ok":
+        try:
+            checks["schema"] = "ok" if current_revision(db.get_bind()) == head_revision() else "outdated"
+        except Exception:  # noqa: BLE001
+            checks["schema"] = "unavailable"
+    try:
+        checks["object_storage"] = "ok" if default_store(settings).healthy() else "unavailable"
+    except StorageError:
+        checks["object_storage"] = "unavailable"
+    if settings.oidc_auth:
+        from .identity.oidc import OIDCError, get_oidc_client
+
+        try:
+            get_oidc_client(settings).metadata()
+            checks["identity_provider"] = "ok"
+        except OIDCError:
+            checks["identity_provider"] = "unavailable"
+    if settings.processing_mode == "queue" and checks["database"] == "ok":
+        try:
+            cutoff = lifecycle.now_utc().timestamp() - settings.worker_stale_seconds
+            beats = db.scalars(select(WorkerHeartbeat.last_seen_at)).all()
+            fresh = [b for b in beats if lifecycle._aware(b).timestamp() >= cutoff]
+            checks["workers"] = "ok" if fresh else "none_active"  # degraded: uploads still queue
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            checks["workers"] = "unknown"
+    checks["embedding_model"] = "loaded" if get_embedder().is_loaded else "not_loaded"
+    critical = ("database", "schema", "object_storage", "identity_provider")
+    ready = all(checks.get(name, "ok") == "ok" for name in critical)
+    degraded = checks.get("workers") not in (None, "ok") or checks["embedding_model"] != "loaded"
+    response.status_code = 200 if ready else 503
+    return {"status": "ready" if ready and not degraded else ("degraded" if ready else "not_ready"),
+            "checks": checks}
+
+
+# ----------------------------------------------------------------------------- identity
 
 @app.get("/api/me")
 def me(user: User = Depends(current_user)):
-    return {"email": user.email, "groups": user.groups, "role": user.role, "tenant": user.tenant_id}
+    return user_view(user)
+
+
+# ----------------------------------------------------------------------------- documents
+
+def _grants(db: Session, ids: list[str]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    if ids:
+        for doc_id, group in db.execute(select(DocumentGrant.document_id, DocumentGrant.group_name)
+                                        .where(DocumentGrant.document_id.in_(ids))
+                                        .order_by(DocumentGrant.id)):
+            out[doc_id].append(group)
+    return out
 
 
 @app.get("/api/documents")
 def documents(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = db.scalars(authorized_documents(user).order_by(Document.created_at.desc())).all()
+    ids = [d.id for d in rows]
+    grants, jobs = _grants(db, ids), lifecycle.latest_jobs(db, ids)
     return [
         {
             "id": d.id,
@@ -174,10 +267,9 @@ def documents(user: User = Depends(current_user), db: Session = Depends(get_db))
             "pages": d.page_count,
             "created_at": d.created_at.isoformat(),
             "fields": d.extracted_fields,
-            "groups": db.scalars(
-                select(DocumentGrant.group_name).where(DocumentGrant.document_id == d.id)
-            ).all(),
+            "groups": grants[d.id],
             "intelligence": intelligence_summary(db, d),
+            **lifecycle.lifecycle_view(d, jobs.get(d.id)),
         }
         for d in rows
     ]
@@ -198,6 +290,8 @@ def document_details(
         "filename": doc.filename,
         "page_count": doc.page_count,
         "fields": doc.extracted_fields,
+        "owner_is_me": doc.owner_id == user.id,
+        **lifecycle.lifecycle_view(doc, lifecycle.latest_jobs(db, [doc.id]).get(doc.id)),
         "pages": [
             {"page": c.page_number, "content": c.content}
             for c in db.scalars(
@@ -216,115 +310,98 @@ def original_file(
     doc = permitted_document(db, user, document_id)
     if not doc:
         raise HTTPException(404, "Document not found")
-    path = settings.storage_dir / doc.storage_key
-    if not path.is_file():
-        raise HTTPException(404, "Original file missing")
+    response = stream_object(doc.storage_backend, doc.storage_key, doc.filename, doc.content_type)
     audit(db, user, "source_download", doc.id)
     db.commit()
-    return FileResponse(path, filename=doc.filename)
+    return response
 
 
-# A plain `def` route: FastAPI runs it in its worker threadpool, so parsing and CPU-bound
-# embedding do not block the event loop (other requests keep being served meanwhile).
+# A plain `def` route: FastAPI runs it in its worker threadpool, so validation, storage I/O and
+# (inline mode) parsing / embedding never block the event loop.
 @app.post("/api/documents", status_code=201)
 def upload(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     groups: str = Form(..., description="Comma-separated groups to grant"),
+    retention_days: int | None = Form(default=None),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
     embedder: Embedder = Depends(get_embedder),
+    sessions: sessionmaker = Depends(lifecycle.get_worker_sessions),
 ):
-    filename = Path(file.filename or "").name
-    extension = Path(filename).suffix.lower()
-    if extension not in {".pdf", ".docx", ".xlsx", ".txt", ".md"}:
-        raise HTTPException(415, "Supported: PDF (text layer or scanned), DOCX, XLSX, TXT, MD")
+    cfg = settings
     allowed_groups = list(dict.fromkeys(g.strip() for g in groups.split(",") if g.strip()))
     if not allowed_groups or len(allowed_groups) > 5 or any(len(g) > 60 for g in allowed_groups):
         raise HTTPException(400, "Provide 1 to 5 valid groups")
     if user.role != "admin" and not set(allowed_groups).issubset(set(user.groups)):
         raise HTTPException(403, "Cannot share with a group you do not belong to")
-    contents = file.file.read(settings.max_upload_bytes + 1)
-    if not contents:
-        raise HTTPException(400, "The uploaded file is empty")
-    if len(contents) > settings.max_upload_bytes:
-        raise HTTPException(413, f"Upload exceeds {settings.max_upload_bytes // (1024 * 1024)} MB")
+    idempotency_key = lifecycle.checked_idempotency_key(request.headers.get("Idempotency-Key"))
+    if idempotency_key:
+        previous = queue.by_idempotency_key(db, user.tenant_id, idempotency_key)
+        if previous is not None and previous.document_id:
+            response.status_code = 200
+            return {"id": previous.document_id, "deduplicated": True, "job": queue.view(previous)}
+    contents = file.file.read(cfg.max_upload_bytes + 1)
     try:
-        # Layout-aware parse (OCR for pages without a text layer). The page texts feed the existing
-        # chunker unchanged, so RAG chunks, page numbers and citations keep their meaning.
-        parsed = parse_document(filename, contents)
-    except UnsupportedFormat as exc:
-        raise HTTPException(415, str(exc)) from None
-    except Exception as exc:
-        raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
-    pages = parsed.page_texts()
+        validated = validate_upload(file.filename, contents, cfg)
+    except UploadRejected as exc:
+        raise HTTPException(exc.status, exc.message) from None
+    retention = lifecycle.retention_until(retention_days, cfg)
+    parsed = None
+    if cfg.processing_mode == "inline":
+        # Inline (local demo, tests, evaluation): keep the v0.3 contract that a file which cannot
+        # be parsed is rejected with 422 and nothing is stored. Queue mode parses in the worker.
+        try:
+            with span("document.parse", **{"document.format": validated.format}):
+                parsed = parse_document(validated.filename, contents)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
     doc_id = str(uuid4())
-    storage_key = f"{doc_id}{extension}"
-    file_path = settings.storage_dir / storage_key
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(contents)
+    backend, key = lifecycle.put_original(cfg, user.tenant_id, doc_id, 1, validated, contents)
     try:
-        doc = Document(
-            id=doc_id,
-            tenant_id=user.tenant_id,
-            owner_id=user.id,
-            title=Path(filename).stem[:200],
-            filename=filename[:255],
-            storage_key=storage_key,
-            sha256=sha256(contents).hexdigest(),
-            page_count=len(pages),
-            extracted_fields=extract_contract_fields(pages),
-        )
-        db.add(doc)
-        db.flush()  # no ORM relationships: parent row must exist before FK children (PostgreSQL)
-        for group in allowed_groups:
-            db.add(DocumentGrant(document_id=doc_id, group_name=group))
-        for page_num, page in enumerate(pages, 1):
-            for position, chunk in enumerate(split_page(page)):
-                db.add(
-                    Chunk(
-                        id=str(uuid4()),
-                        document_id=doc_id,
-                        page_number=page_num,
-                        position=position,
-                        content=chunk,
-                    )
-                )
-        audit(db, user, "upload", doc_id)
+        doc, job = lifecycle.create_document(db, user, validated, allowed_groups, document_id=doc_id,
+                                             backend=backend, key=key, cfg=cfg, retention=retention,
+                                             idempotency_key=idempotency_key)
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        lifecycle.discard_object(cfg, key)
+        previous = queue.by_idempotency_key(db, user.tenant_id, idempotency_key) if idempotency_key else None
+        if previous is None:
+            raise
+        response.status_code = 200
+        return {"id": previous.document_id, "deduplicated": True, "job": queue.view(previous)}
     except Exception:
         db.rollback()
-        file_path.unlink(missing_ok=True)
+        lifecycle.discard_object(cfg, key)
         raise
-    # Embeddings are generated after the document is durably stored. A model failure is reported
-    # explicitly (no placeholder vectors); `python scripts/embed_backfill.py` can retry later.
-    embedding_status = "skipped_requires_postgresql"
-    if not settings.embed_on_upload:
-        embedding_status = "disabled"
-    elif db.get_bind().dialect.name == "postgresql":
-        try:
-            stats = embed_pending_chunks(db, embedder, document_ids=[doc_id])
-            db.commit()
-            embedding_status = f"embedded:{stats.embedded}"
-        except EmbeddingError as exc:
-            db.rollback()
-            embedding_status = f"failed: {str(exc)[:160]}"
-    # Document intelligence (structure + offline rules extraction). A failure here never undoes
-    # the upload: it is recorded as processing status 'failed' and can be retried via /process.
-    try:
-        docintel.store_structure(db, doc, parsed)
-        docintel.process(db, user, doc)
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        docintel.mark_failed(db, doc, parsed, exc)
-        db.commit()
+    duplicate_of = db.scalar(authorized_documents(user).with_only_columns(Document.id).where(
+        Document.sha256 == validated.sha256, Document.id != doc_id, Document.owner_id == user.id).limit(1))
+    if cfg.processing_mode != "inline":
+        response.status_code = 202
+        return {"id": doc_id, "title": doc.title, "lifecycle_state": "uploaded", "duplicate_of": duplicate_of,
+                "job": queue.view(job), "status_url": f"/api/jobs/{job.id}"}
+    outcome = lifecycle.execute_inline(job.id, cfg, sessions, embedder, preparsed=parsed, preloaded=contents)
+    db.expire_all()
+    doc = db.get(Document, doc_id)
+    result = outcome.result or {}
+    if outcome.status == "completed":
+        embedding_status = result.get("embedding_status", "unknown")
+    elif outcome.error_code == "embedding_unavailable":
+        embedding_status = outcome.error_message or "failed"
+    else:
+        embedding_status = f"not_completed: {outcome.error_code or outcome.status}"
     return {
         "id": doc_id,
         "title": doc.title,
         "pages": doc.page_count,
-        "fields_extracted": len(doc.extracted_fields),
+        "fields_extracted": len(doc.extracted_fields or {}),
         "embedding_status": embedding_status,
         "processing": intelligence_summary(db, doc),
+        "lifecycle_state": doc.lifecycle_state,
+        "duplicate_of": duplicate_of,
+        "job": queue.view(db.get(ProcessingJob, job.id) or job),
     }
 
 
@@ -350,16 +427,18 @@ def ask(
     if mode == "hybrid" and not any(w > 0 for w in weights.values()):
         raise HTTPException(422, "At least one hybrid weight must be positive")
     try:
-        result = retrieve(
-            db, user, payload.question, mode, embedder,
-            top_k=payload.top_k, candidates=payload.candidates,
-            weights=weights, rrf_k=settings.rrf_k,
-        )
+        with span("retrieval", **{"retrieval.mode": mode, "retrieval.top_k": payload.top_k}):
+            result = retrieve(
+                db, user, payload.question, mode, embedder,
+                top_k=payload.top_k, candidates=payload.candidates,
+                weights=weights, rrf_k=settings.rrf_k,
+            )
     except RetrievalUnavailable as exc:
         raise HTTPException(409, f"{exc}; mode '{mode}' is unavailable") from None
     except EmbeddingError as exc:
         # No silent fallback to keyword-only results: the caller asked for a specific strategy.
         raise HTTPException(503, f"Embedding model unavailable: {str(exc)[:160]}") from None
+    RETRIEVAL_DURATION.labels(mode).observe((perf_counter() - start))
     hits = result.hits
     # Query-aware sentence selection over the AUTHORIZED hits only. The semantic sentence scorer is
     # used where the embedding model is part of the deployment (PostgreSQL); SQLite stays lexical.
@@ -386,9 +465,11 @@ def ask(
         if not decision.sufficient:
             hits, snippets = [], []  # insufficient evidence: nothing is cited or sent to an LLM
     # Provider failures and unverifiable LLM citations fall back to verbatim quotes inside answer().
-    response, answer_mode = answer(payload.question, hits, sentence_embedder, snippets)
+    with span("rag.answer", **{"retrieval.mode": mode, "rag.sources": len(hits)}):
+        response, answer_mode = answer(payload.question, hits, sentence_embedder, snippets)
     audit(db, user, "ask")
     db.commit()
+    RAG_DURATION.labels(answer_mode).observe(perf_counter() - start)
     return {
         "answer": response,
         "mode": answer_mode,

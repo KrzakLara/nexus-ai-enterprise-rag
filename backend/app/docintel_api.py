@@ -10,10 +10,10 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import current_user
 from .config import settings
@@ -21,9 +21,12 @@ from .database import get_db
 from .docintel import compare as cmp
 from .docintel import review as rv
 from .docintel import service
-from .docintel.llm import ExtractionProviderError
-from .docintel.parsing import parse_document
+from . import lifecycle
+from .jobs import queue
+from .lifecycle import get_worker_sessions
 from .models import Document, DocumentProcessing, Extraction, ExtractionField, User
+from .observability.metrics import REVIEW_ACTIONS
+from .runtime import get_settings
 from .security import authorized_documents, permitted_document
 
 router = APIRouter(tags=["document intelligence"])
@@ -117,34 +120,32 @@ def library(user: User = Depends(current_user), db: Session = Depends(get_db)):
 
 
 @router.post("/api/documents/{document_id}/process")
-def process_document(document_id: str, payload: ProcessIn, user: User = Depends(current_user),
-                     db: Session = Depends(get_db)):
+def process_document(document_id: str, payload: ProcessIn, response: Response,
+                     user: User = Depends(current_user), db: Session = Depends(get_db),
+                     sessions: sessionmaker = Depends(get_worker_sessions)):
+    """(Re-)run extraction as a durable `reprocess` job. Inline mode returns the extraction (v0.3
+    contract); queue mode answers 202 with the job to poll."""
+    cfg = get_settings()
     doc = _doc(db, user, document_id)
     if not (rv.can_review(user) or doc.owner_id == user.id):
         raise HTTPException(403, "Only the owner, a reviewer or an admin can (re-)process a document")
     if payload.provider == "llm" and not settings.openai_api_key:
         raise HTTPException(409, "LLM extraction is not configured (OPENAI_API_KEY); use provider 'rules'")
-    if payload.reparse or db.get(DocumentProcessing, doc.id) is None:
-        from . import main
-
-        path = main.settings.storage_dir / doc.storage_key
-        if not path.is_file():
-            raise HTTPException(404, "Original file missing")
-        try:
-            parsed = parse_document(doc.filename, path.read_bytes())
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(422, f"Document could not be parsed: {str(exc)[:180]}") from None
-        service.store_structure(db, doc, parsed)
-    try:
-        extraction = service.process(db, user, doc, payload.provider, payload.force, payload.doc_type)
-    except service.ExtractionLocked as exc:
-        db.rollback()
-        raise HTTPException(409, str(exc)) from None
-    except ExtractionProviderError as exc:
-        db.commit()  # keep the 'failed' processing status and attempt count
-        raise HTTPException(502, f"Extraction provider failed (no fallback was used): {exc}") from None
+    existing = db.scalar(select(Extraction).where(Extraction.document_id == doc.id))
+    if existing and existing.status in ("approved", "rejected") and not payload.force:
+        raise HTTPException(409, f"extraction is {existing.status}; pass force=true to re-process")
+    job, _ = lifecycle.submit(db, user, "reprocess", doc, payload.model_dump(), cfg, dedupe=False)
     db.commit()
-    return service.serialize(db, extraction) | {"processing": summary(db, doc)}
+    if cfg.processing_mode != "inline":
+        response.status_code = 202
+        return {"document_id": doc.id, "job": queue.view(job)}
+    outcome = lifecycle.execute_inline(job.id, cfg, sessions)
+    if outcome.status != "completed":
+        raise HTTPException(outcome.http_status if outcome.http_status >= 400 else 500,
+                            outcome.error_message or outcome.error_code or "Processing failed")
+    db.expire_all()
+    extraction = db.scalar(select(Extraction).where(Extraction.document_id == doc.id))
+    return service.serialize(db, extraction) | {"processing": summary(db, doc), "job_id": job.id}
 
 
 @router.get("/api/documents/{document_id}/processing")
@@ -201,8 +202,13 @@ def field_evidence(extraction_id: str, name: str, user: User = Depends(current_u
 def validate_extraction(extraction_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     ext, doc = _extraction(db, user, extraction_id)
     issues = service.revalidate(db, ext, service.load_parsed(db, doc.id))
-    db.commit()
-    return {"extraction_id": ext.id, "status": ext.status, "version": ext.version, "issues": issues}
+    body = {"extraction_id": ext.id, "status": ext.status, "version": ext.version, "issues": issues}
+    if rv.can_review(user):
+        db.commit()  # reviewers persist the recomputed issues / status
+    else:
+        db.rollback()  # readers get the result; RLS lets only reviewers write extractions
+        body["persisted"] = False
+    return body
 
 
 @router.patch("/api/extractions/{extraction_id}/fields")
@@ -211,6 +217,7 @@ def correct_fields(extraction_id: str, payload: CorrectIn, user: User = Depends(
     ext, _ = _extraction(db, user, extraction_id)
     _review_call(rv.correct, db, user, ext, [c.model_dump() for c in payload.corrections], payload.expected_version)
     db.commit()
+    REVIEW_ACTIONS.labels("correct").inc()
     return service.serialize(db, ext)
 
 
@@ -220,6 +227,7 @@ def approve_extraction(extraction_id: str, payload: DecisionIn, user: User = Dep
     ext, _ = _extraction(db, user, extraction_id)
     _review_call(rv.approve, db, user, ext, payload.expected_version, payload.comment, payload.override_reason)
     db.commit()
+    REVIEW_ACTIONS.labels("approve").inc()
     return service.serialize(db, ext)
 
 
@@ -229,6 +237,7 @@ def reject_extraction(extraction_id: str, payload: DecisionIn, user: User = Depe
     ext, _ = _extraction(db, user, extraction_id)
     _review_call(rv.reject, db, user, ext, payload.expected_version, payload.comment or "")
     db.commit()
+    REVIEW_ACTIONS.labels("reject").inc()
     return service.serialize(db, ext)
 
 
