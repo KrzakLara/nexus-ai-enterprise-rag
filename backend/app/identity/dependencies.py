@@ -68,15 +68,26 @@ MESSAGES = {
     "origin_not_allowed": "Request origin is not allowed",
     "bearer_disabled": "Bearer tokens are not accepted",
     "no_tenant": "Your account is not a member of any workspace",
+    "idp_unavailable": "The identity provider is temporarily unavailable; please retry",
 }
+# The identity provider could not be reached / answered nonsense: a server-side problem (503,
+# retry), never "your token is invalid" (401, which makes clients discard valid tokens).
+IDP_FAILURES = frozenset({"idp_unavailable", "idp_invalid_response", "jwks_invalid", "issuer_mismatch",
+                          "pkce_unsupported"})
 
 
 def fail(method: str, code: str, status_code: int = status.HTTP_401_UNAUTHORIZED,
-         message: str | None = None) -> AuthFailure:
-    AUTH_FAILURES.labels(method, code).inc()
-    log.warning("auth_failed", extra={"event": "auth_failed", "method": method, "reason": code,
+         message: str | None = None, detail_code: str | None = None) -> AuthFailure:
+    """`code` is returned to the client; `detail_code` (e.g. expired, invalid_signature,
+    unknown_key) is the precise, low-cardinality category for logs and metrics."""
+    reason = detail_code or code
+    AUTH_FAILURES.labels(method, reason).inc()
+    log.warning("auth_failed", extra={"event": "auth_failed", "method": method, "reason": reason,
                                       "status": status_code})
-    return AuthFailure(status_code, code, message or MESSAGES.get(code, "Authentication failed"))
+    failure = AuthFailure(status_code, code, message or MESSAGES.get(code, "Authentication failed"))
+    if status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+        failure.headers = {"Retry-After": "5"}
+    return failure
 
 
 def _active(user: User | None, method: str, db: Session, row: AuthSession | None = None) -> User:
@@ -107,7 +118,10 @@ def _oidc_bearer(token: str, db: Session, cfg: Settings) -> Principal:
         claims = get_oidc_client(cfg).validate_access_token(token)
         mapped = map_claims(claims, cfg)
     except OIDCError as exc:
-        raise fail("oidc_bearer", exc.code if exc.code in MESSAGES else "invalid_token") from None
+        if exc.code in IDP_FAILURES:
+            raise fail("oidc_bearer", "idp_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE,
+                       detail_code=exc.code) from None
+        raise fail("oidc_bearer", "invalid_token", detail_code=exc.code) from None
     except MappingError as exc:
         raise fail("oidc_bearer", exc.code, status.HTTP_403_FORBIDDEN, str(exc)) from None
     found = resolve_identity(db, mapped.issuer, mapped.subject)
