@@ -55,4 +55,18 @@ were exercised and blocked. No external penetration test has been performed.
 
 ## Results
 
-The measured counts are filled in from the executed runs below.
+**Status: partial.** The per-file test counts and coverage of the final code come from the full
+Linux regression, which has **not been run yet** (see
+[phase4-progress.md](phase4-progress.md#resume-point-session-checkpoint-2026-11-15-1955-utc)).
+Verified so far, on the final or near-final code:
+
+| Verification | Result | Evidence |
+|---|---|---|
+| Targeted suites (auth / OIDC, observability, Phase 4 security, permissions, jobs, storage, MVP end-to-end), Windows + PostgreSQL 16 | 160 passed / 3 skipped, then after the last fixes 105 passed / 12 skipped (MinIO, Keycloak and Tesseract tests need those services: they run in the Linux regression); 0 failed | local runs, 2026-11-15 |
+| Mutation check of the duplicate-submission test | removing the advisory lock makes the test fail (two jobs) | local run |
+| Authorization under load (k6, 4 profiles, 4 048 requests) | **0** authorization violations; cross-tenant probes always 404 | `eval/phase4/load/*.json` |
+| Failure injection (worker kill, frozen database, storage outage, concurrent duplicates, delete during processing) | **12/12** after two defects found and fixed (first run 8/10) | `eval/phase4/resilience-latest.json` |
+| Backup / restore | **8/8**, incl. RLS enabled + forced on 15 tables with the same 44 policies and no rows for the runtime role without context after restore | `eval/phase4/backup-restore-drill.json` |
+| Docker end-to-end on the final image | **22/22**: OIDC + PKCE login, private storage, RLS on the live database, other group / other tenant denied, trace across API and worker, deletion + purge, RP-initiated and back-channel logout | `eval/phase4/e2e-latest.json` |
+| Real browser (headless Chromium) | SSO through Keycloak with PKCE S256, no token in `localStorage`, session cookie not readable from JavaScript, session restored after reload, 401 after logout | screenshots in `docs/images/` |
+| Secret scan | gitleaks v8.24.0 over the full history: 0 findings after triage of 3 synthetic redaction-test inputs (`.gitleaksignore`) | CI job `secrets` (not yet run on GitHub) |
