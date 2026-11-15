@@ -38,7 +38,7 @@ from ..docintel.structure import ParsedDocument
 from ..embeddings import EmbeddingError
 from ..indexing import embed_pending_chunks
 from ..models import (AuditEvent, Chunk, ChunkEmbedding, Document, DocumentGrant, DocumentProcessing,
-                      DocumentTable, DocumentVersion, Extraction, User)
+                      DocumentTable, DocumentVersion, Extraction, ExtractionField, ReviewEvent, User)
 from ..observability.metrics import (DOCUMENTS_PURGED, EMBEDDING_DURATION, EXTRACTIONS,
                                      INGESTION_DURATION, OCR_DURATION, OCR_PAGES, STAGE_DURATION)
 from ..observability.tracing import span
@@ -393,6 +393,15 @@ def purge(ctx: JobContext) -> dict:
             if doc.deleted_at is None:
                 raise permanent("not_deleted", "Refusing to purge a document that is not deleted.", 409)
             removed = {}
+            # explicit child deletes (not only FK cascades: SQLite does not enforce them)
+            chunk_ids = select(Chunk.id).where(Chunk.document_id == doc.id)
+            removed["chunk_embeddings"] = db.execute(
+                delete(ChunkEmbedding).where(ChunkEmbedding.chunk_id.in_(chunk_ids))).rowcount or 0
+            extraction_ids = select(Extraction.id).where(Extraction.document_id == doc.id)
+            removed["extraction_fields"] = db.execute(
+                delete(ExtractionField).where(ExtractionField.extraction_id.in_(extraction_ids))).rowcount or 0
+            removed["review_events"] = db.execute(
+                delete(ReviewEvent).where(ReviewEvent.document_id == doc.id)).rowcount or 0
             for model in (Chunk, DocumentTable, DocumentProcessing, Extraction, DocumentGrant):
                 removed[model.__tablename__] = db.execute(
                     delete(model).where(model.document_id == doc.id)).rowcount or 0

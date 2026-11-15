@@ -54,6 +54,7 @@ ASYMMETRIC_ALGS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512
 DEMO_DEFAULT_SECRETS = frozenset({
     "local-demo-secret-not-for-production", "change-this-local-demo-secret",
     "nexus-local-demo-rotate-this-secret",
+    "bG9jYWwtb25seS1kZXYta2V5LWRvLW5vdC1yZXVzZSE=",  # compose.oidc.yaml local-only session key
 })
 TENANT_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
@@ -296,8 +297,8 @@ def validate_settings(s: Settings) -> list[str]:
             errors.append("SESSION_ENCRYPTION_KEY must be 32 random bytes, base64-encoded "
                           "(python -c \"import secrets,base64;print(base64.urlsafe_b64encode("
                           "secrets.token_bytes(32)).decode())\")")
-        elif s.session_encryption_key in DEMO_DEFAULT_SECRETS:
-            errors.append("SESSION_ENCRYPTION_KEY must not be a published demo default")
+        elif s.production_like and s.session_encryption_key in DEMO_DEFAULT_SECRETS:
+            errors.append("SESSION_ENCRYPTION_KEY must not be a published local-development default")
         bad_algs = [a for a in s.oidc_allowed_algs if a not in ASYMMETRIC_ALGS]
         if bad_algs or not s.oidc_allowed_algs:
             errors.append(f"OIDC_ALLOWED_ALGS may only contain asymmetric algorithms "

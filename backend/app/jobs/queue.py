@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from ..database import SecurityContext, set_security_context
@@ -45,6 +45,15 @@ def _aware(value: datetime | None) -> datetime | None:
     if value is not None and value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def scheduled(db: Session, delay_seconds: float = 0.0):
+    """A point in time on the DATABASE clock for PostgreSQL (claim_job compares run_after and
+    locked_until with the database's now(), so application-server clock skew cannot delay or
+    expire jobs); the application clock for the single-process SQLite mode."""
+    if db.get_bind().dialect.name == "postgresql":
+        return func.now() + timedelta(seconds=delay_seconds)
+    return now_utc() + timedelta(seconds=delay_seconds)
 
 
 class LeaseLost(RuntimeError):
@@ -76,7 +85,7 @@ class ClaimedJob:
 def enqueue(db: Session, *, tenant_id: str, user_id: str, job_type: str, document_id: str | None = None,
             document_version: int | None = None, payload: dict | None = None,
             idempotency_key: str | None = None, priority: int = 100, max_attempts: int = 5,
-            run_after: datetime | None = None) -> ProcessingJob:
+            delay_seconds: float = 0.0) -> ProcessingJob:
     """Add a job in the CALLER'S transaction (committed atomically with the caller's changes)."""
     if job_type not in JOB_TYPES:
         raise ValueError(f"unknown job type {job_type!r}")
@@ -84,7 +93,7 @@ def enqueue(db: Session, *, tenant_id: str, user_id: str, job_type: str, documen
     job = ProcessingJob(
         id=str(uuid4()), tenant_id=tenant_id, user_id=user_id, document_id=document_id,
         document_version=document_version, job_type=job_type, status="queued", stage="queued",
-        priority=priority, attempts=0, max_attempts=max_attempts, run_after=run_after or now,
+        priority=priority, attempts=0, max_attempts=max_attempts, run_after=scheduled(db, delay_seconds),
         idempotency_key=idempotency_key, payload=payload or {}, trace_context=inject_current() or None,
         cancel_requested=False, created_at=now, updated_at=now,
     )
@@ -184,7 +193,7 @@ def heartbeat(db: Session, job: ClaimedJob, lease_seconds: int) -> bool:
     bind(db, job)
     now = now_utc()
     result = db.execute(update(ProcessingJob).where(*_fenced(db, job))
-                        .values(locked_until=now + timedelta(seconds=lease_seconds), heartbeat_at=now,
+                        .values(locked_until=scheduled(db, lease_seconds), heartbeat_at=now,
                                 updated_at=now)
                         .returning(ProcessingJob.cancel_requested)).first()
     db.commit()
@@ -215,7 +224,7 @@ def finish(db: Session, job: ClaimedJob, status: str, *, result: dict | None = N
     now = now_utc()
     if status == "retry":
         if job.attempts < job.max_attempts:
-            row.status, row.run_after, row.finished_at = "retrying", now + timedelta(seconds=retry_in or 0), None
+            row.status, row.run_after, row.finished_at = "retrying", scheduled(db, retry_in or 0), None
         else:
             row.status, row.finished_at = "failed", now
     else:
@@ -250,7 +259,7 @@ def retry(db: Session, job: ProcessingJob, budget: int) -> None:
     """Failed (dead-lettered) or cancelled job back to the queue with a fresh attempt budget.
     The attempt counter is kept (history); max_attempts grows by `budget`."""
     now = now_utc()
-    job.status, job.stage, job.run_after = "queued", "queued", now
+    job.status, job.stage, job.run_after = "queued", "queued", scheduled(db)
     job.max_attempts = job.attempts + max(1, budget)
     job.cancel_requested, job.finished_at, job.updated_at = False, None, now
     job.result = None

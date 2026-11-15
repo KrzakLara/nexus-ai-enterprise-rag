@@ -14,10 +14,10 @@ from uuid import uuid4
 from anyio import to_thread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import lifecycle
@@ -117,6 +117,15 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],
 )
 app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(OperationalError)
+async def database_unavailable(request: Request, exc: OperationalError):
+    """Connection-level database failures are a temporary outage (503), never a 500 with details."""
+    log.warning("database_unavailable", extra={"event": "database_unavailable",
+                                               "error_type": type(getattr(exc, "orig", exc)).__name__})
+    return JSONResponse({"detail": "The database is temporarily unavailable; please retry."}, status_code=503,
+                        headers={"Retry-After": "5"})
 
 
 EVIDENCE_POLICY = EvidencePolicy(

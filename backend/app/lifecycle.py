@@ -147,8 +147,7 @@ def soft_delete(db: Session, user: User, doc: Document, cfg: Settings) -> Proces
     job = queue.by_idempotency_key(db, doc.tenant_id, key) or queue.enqueue(
         db, tenant_id=doc.tenant_id, user_id=user.id, job_type="purge", document_id=doc.id,
         payload={"reason": "user_delete"}, idempotency_key=key, priority=50,
-        max_attempts=max(cfg.job_max_attempts, 10),
-        run_after=now_utc() + timedelta(seconds=cfg.deletion_grace_seconds))
+        max_attempts=max(cfg.job_max_attempts, 10), delay_seconds=cfg.deletion_grace_seconds)
     now = now_utc()
     db.add(AuditEvent(user_id=user.id, tenant_id=user.tenant_id, action="document_delete", document_id=doc.id))
     db.flush()

@@ -1,3 +1,5 @@
 # Frozen evaluation data and reports are stored byte-for-byte: their sha256
 # hashes are recorded in eval/reports/*.json and docs. Never normalize line endings.
 eval/** -text
+# Shell scripts run inside Linux containers: always LF, also on Windows checkouts.
+*.sh text eol=lf

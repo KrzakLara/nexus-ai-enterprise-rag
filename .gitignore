@@ -23,3 +23,7 @@ eval/docintel/reports/ci*
 uploads/
 .cache/
 *.log
+# Phase 4 drills and load-test scratch output (synthetic data, may contain dumps / credentials)
+backups/
+eval/phase4/load/.k6-*/
+frontend/dist/
