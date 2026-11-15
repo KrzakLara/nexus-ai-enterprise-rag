@@ -63,8 +63,8 @@ jobs:
       - run: uv run ruff check backend scripts
       - name: Wait for MinIO and Keycloak
         run: |
-          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null && break; sleep 2; done
-          for i in $(seq 1 90); do curl -fsS http://localhost:8080/realms/nexus >/dev/null && break; sleep 2; done
+          for _ in $(seq 1 90); do curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null && break; sleep 2; done
+          for _ in $(seq 1 90); do curl -fsS http://localhost:8080/realms/nexus >/dev/null && break; sleep 2; done
           curl -fsS http://localhost:8080/realms/nexus/.well-known/openid-configuration >/dev/null
       - name: Tests (SQLite + PostgreSQL/RLS + MinIO + Keycloak + real embedding model)
         # Fails on any test failure; coverage below the measured floor fails too.
