@@ -48,7 +48,24 @@ flowchart LR
 
 ## Definition of Done
 
-The status of each item, with the evidence that supports it, is maintained in the final report and
-in [phase4-progress.md](phase4-progress.md). "Complete" means complete against the Phase 4 scope,
-not certified production readiness; see the limitations in each document and in
+"Complete" means complete against the Phase 4 scope on this branch, verified locally and in GitHub
+Actions. It does **not** mean certified production readiness; see the limitations below and in
 [phase4-case-study.md](phase4-case-study.md#what-remains-out-of-scope).
+
+| Criterion | Evidence | Where verified |
+|---|---|---|
+| 4A OIDC Authorization Code + PKCE through the BFF, HttpOnly sessions, CSRF, strict token validation, demo isolation | `test_auth_oidc.py`, `test_keycloak_integration.py` (real Keycloak), Docker E2E steps 1 and 9, real-browser check | GitHub Actions `backend` + `docker-e2e`; local |
+| 4B PostgreSQL RLS (FORCE, runtime roles without BYPASSRLS, transaction-local context, worker scope) | `test_rls_pg.py` incl. mutation test, `test_security_phase4.py`, E2E step 5, RLS verified again after restore | GitHub Actions `backend` + `docker-e2e`; local drill |
+| 4C durable jobs (leases, fencing, retries, dead letter, idempotency, crash recovery) | `test_jobs_lifecycle.py`; failure-injection drill A, D, E | GitHub Actions `backend`; local drill (12/12) |
+| 4D object storage lifecycle (S3 / MinIO, versions, deletion + purge, retention, integrity) | `test_storage.py` (real MinIO), E2E steps 2 and 8, backup / restore with SHA-256 of every object | GitHub Actions `backend` + `docker-e2e`; local drill (8/8) |
+| 4E observability (redacted JSON logs, low-cardinality metrics, traces across the queue, health) | `test_observability.py`; E2E step 7 (metrics, worker log, one trace across API and worker); promtool; dashboard with real data | GitHub Actions `backend`, `config`, `docker-e2e`; local |
+| 4F verification: security regression suite, failure injection, load profiles, benchmarks, backup / restore | full test suite; k6 smoke in CI; k6 smoke / moderate / stress / sustained locally (0 authorization violations); drills; component benchmarks | GitHub Actions (suite, k6 smoke); local (rest) |
+| Migrations forward-compatible, existing data preserved | `test_migrations.py` (fresh upgrade == ORM, v0.1 stamp-and-upgrade, downgrade round trip); restore drill (revision 0008) | GitHub Actions `backend`; local |
+| Phase 2 / Phase 3 quality unchanged | `scripts/evaluate.py --ci`, `scripts/evaluate_docintel.py --ci` (zero-tolerance authorization gates, retrieval / extraction floors) | GitHub Actions `backend` |
+| Coverage not below the CI floor | `--cov-fail-under=90` | GitHub Actions `backend` |
+| No secrets in the repository | gitleaks over the full history | GitHub Actions `secrets`; local |
+| Docker stack and CI configuration valid | compose render, promtool, dashboard regeneration, actionlint | GitHub Actions `config` |
+| Documentation | enterprise-hardening, authentication-oidc, postgresql-rls, background-processing, object-storage-lifecycle, observability, operations-runbook, security-test-results, performance-benchmarks, phase4-case-study, phase4-progress, README, CHANGELOG | this branch |
+
+GitHub Actions: run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) on `f4a9f91`, all five jobs passed (2026-11-15). Open items and
+the progress record: [phase4-progress.md](phase4-progress.md#final-verification-2026-11-15).

@@ -55,10 +55,16 @@ were exercised and blocked. No external penetration test has been performed.
 
 ## Results
 
-**Status: partial.** The per-file test counts and coverage of the final code come from the full
-Linux regression, which has **not been run yet** (see
-[phase4-progress.md](phase4-progress.md#resume-point-session-checkpoint-2026-11-15-1955-utc)).
-Verified so far, on the final or near-final code:
+The full suite (567 collected tests; per file: OIDC 64, Keycloak 12, RLS 20, Phase 4 security 14,
+jobs / lifecycle 41, storage 22, observability 35, plus the Phase 1-3 suites) ran in GitHub Actions
+run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) on `f4a9f91`, job `backend`. It used PostgreSQL 16 with the RLS runtime roles,
+real MinIO, real Keycloak, Tesseract and the real embedding model, and **passed**: 0 failures, and
+coverage of `backend/app` at or above the enforced 90 % floor. The exact pass / skip split and
+coverage percentage are in the job log, which needs a GitHub login. The same run passed the Phase 2
+and Phase 3 evaluation gates (zero-tolerance authorization checks), the gitleaks history scan and
+the Docker end-to-end job.
+
+Further verification:
 
 | Verification | Result | Evidence |
 |---|---|---|
@@ -69,4 +75,5 @@ Verified so far, on the final or near-final code:
 | Backup / restore | **8/8**, incl. RLS enabled + forced on 15 tables with the same 44 policies and no rows for the runtime role without context after restore | `eval/phase4/backup-restore-drill.json` |
 | Docker end-to-end on the final image | **22/22**: OIDC + PKCE login, private storage, RLS on the live database, other group / other tenant denied, trace across API and worker, deletion + purge, RP-initiated and back-channel logout | `eval/phase4/e2e-latest.json` |
 | Real browser (headless Chromium) | SSO through Keycloak with PKCE S256, no token in `localStorage`, session cookie not readable from JavaScript, session restored after reload, 401 after logout | screenshots in `docs/images/` |
-| Secret scan | gitleaks v8.24.0 over the full history: 0 findings after triage of 3 synthetic redaction-test inputs (`.gitleaksignore`) | CI job `secrets` (not yet run on GitHub) |
+| Secret scan | gitleaks v8.24.0 over the full history: 0 findings after triage of 3 synthetic redaction-test inputs (`.gitleaksignore`) | CI job `secrets`, run 43756922292: passed |
+| Docker end-to-end in CI | `e2e_phase4.py` and the k6 smoke profile on a stack built from scratch on a GitHub runner | CI job `docker-e2e`, run 43756922292: passed |

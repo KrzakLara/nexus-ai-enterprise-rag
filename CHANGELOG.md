@@ -56,6 +56,14 @@ Overview: [docs/enterprise-hardening.md](docs/enterprise-hardening.md). Measured
 - Test suite: PostgreSQL API tests run as the runtime role with RLS enforced; a PostgreSQL advisory
   lock prevents two concurrent test sessions on the same database.
 
+### Fixed during verification (load tests, failure-injection drill, CI)
+- Pool exhaustion under load answered HTTP 500; now 503 + `Retry-After` (metric and alert).
+- A frozen dependency (PostgreSQL paused) hung readiness and requests; readiness probes are bounded
+  and use fresh connections, and `REQUEST_TIMEOUT_SECONDS` answers 503 when no response has started.
+- Duplicate-job detection was not atomic under concurrent submissions; advisory locks per document.
+- JWKS refresh: single flight, stale-while-revalidate, IdP failures answer 503 (not 401).
+- CI: actionlint (shellcheck SC2034) in a workflow script. GitHub Actions run 43756922292: all jobs passed.
+
 ## [0.3.0] - release candidate (not yet tagged) - Phase 3 document intelligence
 
 Release notes: [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md).

@@ -38,11 +38,12 @@ Merge order for later (not done here): Phase 3 branch into `main` first, then th
 | 12b | Backup / restore drill | done (`cec42ea`) | **8/8** (`eval/phase4/backup-restore-drill.json`) |
 | 12c | Component benchmarks | done (`aec92fc`) | paired RLS comparison, sessions, queue, embeddings, parsing / OCR (`eval/phase4/benchmarks.json`) |
 | 12d | Final Docker E2E on the final image | done (this checkpoint) | **22/22** at 19:50 UTC, image `3e049a245db9` (= `aec92fc`), standard configuration (`eval/phase4/e2e-latest.json`); real-browser SSO check passed on the image before the last two fixes |
-| 12e | Full Linux regression with coverage | **NOT RUN** | see resume point |
-| 12f | Phase 2 / Phase 3 evaluation gates | **NOT RUN** | see resume point |
-| 12g | promtool / actionlint | **NOT RUN** | see resume point |
-| 13 | Documentation and final report | partly done | security-test-results counts, README test section and the Definition-of-Done table wait for 12e-12g |
-| — | GitHub Actions | **never executed** | nothing was pushed (requires the owner's approval) |
+| 12e | Full regression on Linux with coverage | done (GitHub Actions) | job `backend` of run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) on `f4a9f91`: pytest over the 567 collected tests with PostgreSQL 16 / RLS, MinIO, Keycloak, Tesseract and the real embedding model, `--cov-fail-under=90`: **passed** (0 failures; coverage ≥ 90 %; the exact pass / skip split and coverage percentage are in the job log, which needs a GitHub login) |
+| 12f | Phase 2 / Phase 3 evaluation gates | done (GitHub Actions) | same job: `evaluate.py --ci` and `evaluate_docintel.py --ci` (zero-tolerance authorization gates, retrieval / extraction floors) and the retrieval / ACL smoke: **passed** |
+| 12g | promtool / actionlint / compose / dashboard | done (`f4a9f91`) | first run `43755469472` failed at actionlint (shellcheck SC2034, unused loop variable in a CI script), fixed; job `config` of run 43756922292: **passed** |
+| 12h | Docker E2E and k6 smoke in GitHub Actions | done | job `docker-e2e` (first execution on GitHub): stack built and healthy in 3 min 45 s, `e2e_phase4.py` and the k6 smoke profile (0 authorization violations threshold): **passed** |
+| 13 | Documentation and final report | done | README, security-test-results, enterprise-hardening (Definition of Done), CHANGELOG updated with the CI results |
+| — | GitHub Actions | **green** | run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) on `f4a9f91`: backend, frontend, secrets, config, docker-e2e all passed (2026-11-15 20:14–20:28 UTC) |
 
 ## Incidents during the run (for the record)
 
@@ -58,48 +59,21 @@ Merge order for later (not done here): Phase 3 branch into `main` first, then th
 * Load testing (stress, first attempt): 8 HTTP 500 from SQLAlchemy pool checkout timeouts; fixed
   (503 + Retry-After) before the measured runs.
 
-## Resume point (session checkpoint, 2026-11-15 ~19:55 UTC)
+## Final verification (2026-11-15)
 
-State at the checkpoint: branch `feat/phase4-enterprise-hardening`, clean working tree after the
-checkpoint commit, nothing pushed. Docker: the disposable stack `nexus-p4` (OIDC + observability,
-standard configuration) and the disposable test services `nexus-p4-testdb` (PostgreSQL on
-127.0.0.1:5434, password `test_only_local`, network alias `postgres` on `nexus-p4-net`) and
-`nexus-p4-minio` (127.0.0.1:9000) are running; `./backups/` (gitignored) holds the drill backup.
-No test, load or drill process is running.
+Phase 4 is verified against its agreed scope: locally (drills, load profiles, benchmarks, Docker
+end-to-end 22/22, real browser) and in GitHub Actions run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) on `f4a9f91`, where all
+five jobs passed. The branch is pushed; it is **not merged** into `main`, untagged and unreleased.
+It is stacked on the Phase 3 branch, so Phase 3 must reach `main` first.
 
-On Windows (Git Bash) run `export MSYS_NO_PATHCONV=1` first and use `$(pwd -W)` instead of
-`$PWD` in the volume arguments.
+Open items (none blocks the Phase 4 scope):
+* transcribe the exact test counts (passed / skipped) and the coverage percentage from the
+  `backend` job log (needs a GitHub login; CI proves 0 failures and coverage ≥ 90 %);
+* the manual `load-test.yml` workflow has not been run on GitHub (the k6 smoke runs in
+  `docker-e2e`; all four profiles were measured locally);
+* out of scope by design: external penetration test, HA / multi-region, WAF / edge rate limiting,
+  KMS / HSM for the session key, SSO for the observability tools, live LLM evaluation.
 
-Remaining verification, in this order (the benchmark sets runtime-role passwords on the test
-cluster, so never run a benchmark and a test session at the same time):
-
-```bash
-# 1. full Linux regression with Tesseract, real MinIO and a fresh disposable Keycloak + coverage
-#    (CI threshold: --cov-fail-under=90). nexus-p4-testrunner:baseline = docker/test-runner.Dockerfile.
-docker run -d --name nexus-p4-kc-test --network nexus-p4-net --memory 1500m \
-  -e KC_BOOTSTRAP_ADMIN_USERNAME=kc-test-admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=kc-test-admin-secret \
-  -v "$PWD/docker/keycloak/nexus-realm.json:/opt/keycloak/data/import/nexus-realm.json:ro" \
-  quay.io/keycloak/keycloak:26.4.2 start-dev --import-realm
-docker run --rm --network nexus-p4-net -v "$PWD:/src" -v nexus-p4_hf_models:/hf -e HF_HUB_OFFLINE=1 \
-  -e TEST_DATABASE_URL=postgresql+psycopg://nexus:test_only_local@postgres:5432/nexus_test \
-  -e TEST_S3_ENDPOINT_URL=http://nexus-p4-minio:9000 -e TEST_KEYCLOAK_URL=http://nexus-p4-kc-test:8080 \
-  nexus-p4-testrunner:baseline sh -c "uv sync --locked --extra dev >/dev/null && \
-  python -m pytest -q -rs -p no:cacheprovider --cov=backend/app --cov-report=term --cov-fail-under=90"
-
-# 2. evaluation gates (same container image, disposable *_eval databases on the test cluster)
-docker run --rm --network nexus-p4-net -v "$PWD:/src" -v nexus-p4_hf_models:/hf -e HF_HUB_OFFLINE=1 \
-  -e EVAL_DATABASE_URL=postgresql+psycopg://nexus:test_only_local@postgres:5432/nexus_eval \
-  nexus-p4-testrunner:baseline sh -c "uv sync --locked --extra dev >/dev/null && python scripts/evaluate.py --ci && \
-  python scripts/evaluate_docintel.py --ci --database-url postgresql+psycopg://nexus:test_only_local@postgres:5432/nexus_docintel_eval"
-
-# 3. static configuration checks
-docker run --rm -v "$PWD/docker/observability:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
-docker run --rm -v "$PWD/docker/observability:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.5.0 check rules /etc/prometheus/alerts.yml
-python scripts/build_grafana_dashboard.py && git diff --exit-code docker/observability/grafana/dashboards/
-docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
-```
-
-Then fill in `docs/security-test-results.md` (per-file counts), the README test section and the
-Definition-of-Done table in `docs/enterprise-hardening.md` from those runs, commit, and ask the
-owner before any push (GitHub Actions has never run for this branch).
-
+The commands used for the local verification remain valid for re-runs: see
+[performance-benchmarks.md](performance-benchmarks.md) (load, drills, benchmarks) and the CI
+workflow `.github/workflows/ci.yml` (tests, gates, Docker E2E).

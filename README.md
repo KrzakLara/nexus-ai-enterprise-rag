@@ -8,7 +8,7 @@
 
 `Applied AI` · `FastAPI` · `React + TypeScript` · `SQLAlchemy + Alembic` · `PostgreSQL FTS + pgvector` · `SentenceTransformers` · `Docker` · `pytest`
 
-**Status:** v0.4.0 in development on `feat/phase4-enterprise-hardening` (Phases 1–4). Phase 4 adds OpenID Connect single sign-on with server-side sessions, PostgreSQL row-level security below the application ACL, durable background workers, private S3-compatible storage with a full document lifecycle, and structured logs, Prometheus metrics and OpenTelemetry traces ([docs/enterprise-hardening.md](docs/enterprise-hardening.md)). Phases 1–3: four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector, hybrid RRF) evaluated on 100 labeled questions, and document intelligence (OCR, extraction with verbatim evidence, validation, review, comparison) evaluated on a frozen 32-document corpus. Zero measured authorization violations. Hardened, but not certified or externally penetration-tested. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
+**Status:** v0.4.0 on `feat/phase4-enterprise-hardening` (Phases 1–4; not yet merged, untagged). GitHub Actions run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) is green: tests, coverage floor, Phase 2/3 gates, secret scan, config validation and Docker end-to-end. Phase 4 adds OpenID Connect single sign-on with server-side sessions, PostgreSQL row-level security below the application ACL, durable background workers, private S3-compatible storage with a full document lifecycle, and structured logs, Prometheus metrics and OpenTelemetry traces ([docs/enterprise-hardening.md](docs/enterprise-hardening.md)). Phases 1–3: four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector, hybrid RRF) evaluated on 100 labeled questions, and document intelligence (OCR, extraction with verbatim evidence, validation, review, comparison) evaluated on a frozen 32-document corpus. Zero measured authorization violations. Hardened, but not certified or externally penetration-tested. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 </div>
 
@@ -40,7 +40,7 @@ Most RAG demos stop at *upload a PDF → chat*. Real enterprise document AI need
 | **Citation and security evaluation**: every citation is mapped back to the stored chunk; an independent ACL oracle checks every candidate, source, citation and LLM prompt | [docs/security.md](docs/security.md); zero-tolerance CI gates |
 | **CI regression gates**: malformed ground truth, leaks, citation errors, non-verbatim quotes, retrieval floors, abstention floor, answer fact recall floor (all mandatory) | `python scripts/evaluate.py --ci`, `eval/ci_thresholds.json` |
 | Evaluation view in the UI | Reads the stored report via `/api/evaluation/summary`; no hardcoded numbers |
-| Tests | **220 tests**, all passing with PostgreSQL (52 of them need real PostgreSQL + pgvector and are skipped without it); 95 % line coverage of `backend/app` (measured 2026-11-14) |
+| Tests | **567 tests** (v0.4.0). GitHub Actions run [43756922292](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/runs/43756922292) runs all of them with PostgreSQL 16 + pgvector (RLS runtime roles), MinIO, Keycloak, Tesseract and the real embedding model: 0 failures, coverage of `backend/app` at or above the 90 % floor (exact figure in the job log). Earlier: 220 tests, 95 % coverage at v0.2 (2026-11-14) |
 
 > **Honest findings.** On the held-out test split **no retrieval mode is significantly better than another**: nDCG@5 is ≈ 0.70–0.74 and every paired bootstrap CI contains 0. **Hybrid does not "win"**. Cross-language questions are weak for every mode because of the embedding model's same-language bias. Two fixes were measured and **not adopted**. A stronger cross-language embedder lost far more elsewhere. Local query translation (MarianMT) tripled hybrid cross-language nDCG@5 on test (0.25 → 0.76), but lowered overall nDCG@5 (0.734 → 0.721) and same-language quality, and added ~0.5 s per query ([evaluation.md](docs/evaluation.md#query-translation-experiment-phase-2d-not-adopted)). The Phase 2d evidence policy refuses every unanswerable test question (9/9), but it also refuses **more answerable ones** than Phase 2c (8/41 instead of 6/41). Query-aware quoting raised offline answer fact recall on test from 0.333 to 0.590, so about 4 in 10 answers still miss an expected fact. Not implemented: LLM answer evaluation (no API key here; the OpenAI path is tested only against a fake client), reranking, ANN indexes, OCR/Docling, workers and production SSO. Details: [docs/evaluation.md](docs/evaluation.md).
 
@@ -297,12 +297,14 @@ Frontend: `cd frontend && npm ci && npm run dev`.
 ## Tests and evaluation
 
 ```bash
-python -m pytest -q                                   # without PostgreSQL: 168 pass, 52 skip
+python -m pytest -q                                   # without services: PostgreSQL / MinIO / Keycloak / OCR tests skip
 python -m pytest -q -m "not model and not postgres"   # fast subset: no model, no DB
 
 docker compose up -d db
 export TEST_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_test
-python -m pytest -q -rs --cov=backend/app             # 220 tests (the *_test DBs are DROPPED and re-created)
+export TEST_S3_ENDPOINT_URL=http://127.0.0.1:9000       # optional: MinIO integration (+ TEST_S3_ACCESS_KEY / TEST_S3_SECRET_KEY)
+export TEST_KEYCLOAK_URL=http://localhost:8080         # optional: real Keycloak (bootstrap admin: see test_keycloak_integration.py)
+python -m pytest -q -rs --cov=backend/app             # 567 tests; CI runs all of them, coverage floor 90 % (the *_test DBs are DROPPED and re-created)
 
 export EVAL_DATABASE_URL=postgresql+psycopg://nexus:demo_local_only@127.0.0.1:5433/nexus_eval
 python scripts/evaluate.py            # full benchmark (~10 min CPU): reports, ablation, calibration, extraction study, docs + README
@@ -330,7 +332,7 @@ The evaluation database (`EVAL_DATABASE_URL`, which must be given explicitly) is
 | `test_answers_pg.py` (3) | End-to-end `/api/ask` with the real demo documents and model: the Croatian Atlas notice question is answered with a verbatim, cited "90 days" quote; users without access never see the clause; a question without evidence abstains | PostgreSQL + real model |
 | `test_pgvector.py` (5) | `vector(384)`, persisted real embeddings, cosine == numpy, vector-space leak test, upload → searchable | PostgreSQL + real model |
 | `test_permissions.py` (16) | Auth, tenant/group isolation, file ACL, upload grants, audit | SQLite **and** PostgreSQL |
-| `test_documents.py` (35) | PDF text layer per page, blank pages, PDF without text layer (OCR not supported) and 100-page limit; DOCX paragraphs, headings and table rows; TXT/MD with BOM and Croatian text; malformed, truncated, non-UTF-8 and unsupported files; chunk size, overlap and boundaries; upload → chunks with page numbers → embeddings (PostgreSQL) → page-correct retrieval; HTTP 400/413/415/422 with nothing stored | pure Python, SQLite **and** PostgreSQL |
+| `test_documents.py` (37) | PDF text layer per page, blank pages, PDF without text layer (OCR not supported) and 100-page limit; DOCX paragraphs, headings and table rows; TXT/MD with BOM and Croatian text; malformed, truncated, non-UTF-8 and unsupported files; chunk size, overlap and boundaries; upload → chunks with page numbers → embeddings (PostgreSQL) → page-correct retrieval; HTTP 400/413/415/422 with nothing stored | pure Python, SQLite **and** PostgreSQL |
 | `test_generation.py` (17) | Exact LLM prompt (question + numbered authorized sources only), client settings, valid/missing/unknown citations, provider failure → explicit verbatim fallback, no provider call without evidence or key, only authorized text in the prompt through the API | fake OpenAI client; SQLite **and** PostgreSQL |
 | `test_mvp_e2e.py` (5) | Login → PDF upload → listing and fields → default-mode ask → `[S#]` resolves to page 3 → document view → byte-identical download → denial for another group and tenant → audit trail; upload/ask run in the threadpool; default mode; model warm-up success and failure | SQLite **and** PostgreSQL |
 | `test_migrations.py` (5) | Fresh upgrade == ORM, v0.1 stamp-and-upgrade, downgrade round trip | SQLite and PostgreSQL |
@@ -341,6 +343,11 @@ The evaluation database (`EVAL_DATABASE_URL`, which must be given explicitly) is
 | `test_evidence.py` (21) | Identifier extraction and exact matching, threshold boundary, sentence and coverage rules, agreement rule, RRF never used as a signal, `none` disables a rule, app defaults **and `.env.example`** == dev calibration | pure Python |
 | `test_extractive.py` (18) | Sentence splitting keeps numbers/dates/identifiers and joins hard-wrapped prose, late facts are selected (not the first 330 characters), Croatian inflection, verbatim per-source quotes, only authorized hits quotable, length bounds; destructive-DB guard | pure Python |
 | `test_evaluation_pg.py` (3) | Evaluation index verified (59 chunks = 59 embeddings, 384-d), metrics bounded, deterministic rankings, end-to-end citations, LLM prompts and permission change | PostgreSQL + real model |
+| `test_auth_oidc.py` (64), `test_keycloak_integration.py` (12) | Phase 4A: strict JWT validation (signatures, claims, algorithm attacks, JWKS rotation, single-flight refresh, IdP outage → 503), claim mapping, BFF login / callback / logout / back-channel logout, cookie sessions, CSRF, origin checks, revalidation, demo isolation; **real Keycloak**: browser login with PKCE, group removal, admin logout, key rotation | fake IdP; real Keycloak |
+| `test_rls_pg.py` (20), `test_security_phase4.py` (14) | Phase 4B: tenant isolation in every table as `nexus_app` (direct SQL), privilege escalation and policy-bypass attempts, worker job scope, pooled-connection context leakage, revocation; mutation test (application filter removed → RLS still blocks) | PostgreSQL (runtime roles) |
+| `test_jobs_lifecycle.py` (41) | Phase 4C/4D: queue mode, idempotency keys, concurrent duplicate submissions (mutation-checked), retries / back-off / dead letter, lease recovery and fencing, cancellation, versions, deletion + purge, retention | SQLite **and** PostgreSQL |
+| `test_storage.py` (22) | Phase 4D: object keys and traversal, upload validation (types, sizes, archives), checksums, presigned URLs, outages; **real MinIO** | local store; MinIO |
+| `test_observability.py` (35) | Phase 4E: log redaction, metrics (no high-cardinality labels), tracing, bounded readiness, 503 on pool exhaustion / frozen dependencies, request deadline | pure Python, SQLite **and** PostgreSQL |
 | `test_ci_gates.py` (13) | Each CI gate fails when breached; a missing threshold fails instead of being skipped; the Phase 2c extractor would fail the answer floor; published benchmark docs and README equal a render of the stored report | pure Python |
 
 **Mutation check:** with the ACL subquery temporarily replaced by an unscoped `select(Document)`, all four keyword/fusion security tests failed (leak, suppression, permission change, LLM prompt), as did the vector-space leak test.
@@ -367,8 +374,9 @@ backend/evaluation/  corpus + ACL oracle, dataset builder/validator, IR metrics,
 eval/docintel/       Phase 3 frozen corpus (32 documents), labels.jsonl, ocr_truth.jsonl, queries.json, manifest.json,
                      ci_thresholds.json, reports/latest.json
 eval/                corpus/, questions.jsonl, retrieval.jsonl (frozen), calibration.json, ci_thresholds.json, reports/
-backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS · 0004 document intelligence
-backend/tests/                220 tests (see table above); fixtures.py generates the PDF/DOCX fixtures
+backend/migrations/versions/  0001 baseline · 0002 pgvector · 0003 FTS · 0004 document intelligence ·
+                              0005 identity + sessions · 0006 storage lifecycle · 0007 processing jobs · 0008 row-level security
+backend/tests/                567 tests (see the table above and docs/security-test-results.md); fixtures.py generates the PDF/DOCX fixtures
 frontend/                     React + TS: retrieval selector, ranks, timings, evidence status, evaluation view,
                               Document Intelligence workspace (DocIntel.tsx, diApi.ts)
 scripts/                      migrate.py, seed_demo.py, embed_backfill.py, build_eval_dataset.py, evaluate.py, compare_embedders.py, experiment_query_translation.py, demo_scenarios.py, docker_smoke.py, evaluate_retrieval.py,
