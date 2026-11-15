@@ -80,7 +80,11 @@ stateDiagram-v2
   "no fallback" contract), `not_deleted`, `database_permission_denied`. Messages are fixed texts or
   our parser's own messages; third-party exceptions contribute their type name only.
 * **Idempotency**: `Idempotency-Key` header on uploads (unique per tenant); one active `reindex` /
-  `ingest` per document (duplicates return the existing job); deterministic chunk ids
+  `ingest` per document (duplicates return the existing job). The check-and-enqueue is atomic on
+  PostgreSQL: transaction-scoped advisory locks (per document; a tenant-wide re-index takes one
+  tenant lock) make concurrent duplicate submissions wait for each other. The resilience drill
+  found the race (two simultaneous requests created two jobs); a mutation test shows the test
+  fails without the lock. Deterministic chunk ids
   (`uuid5(document, version, page, position)`), unchanged chunks keep their embeddings, embeddings
   keyed by `(chunk, model)` with content hashes, extraction is an upsert, and a `checkpoint` in
   `job.result` resumes an ingest after the indexing stage (no duplicate extraction events on retry).

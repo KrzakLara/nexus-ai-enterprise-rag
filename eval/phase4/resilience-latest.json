@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-11-15T19:40:43Z",
+  "checks": 12,
+  "passed": 12,
+  "failed": 0,
+  "observations": {
+    "A_recovery_seconds": 25.7,
+    "B_ready_status_during_outage": 503,
+    "B_request_seconds_during_outage": 12.5,
+    "B_recovery_seconds": 14.1
+  },
+  "results": [
+    {
+      "check": "A worker processes killed mid-OCR (SIGKILL)",
+      "ok": true,
+      "detail": "['nexus-p4-worker-1'] stage=parsing"
+    },
+    {
+      "check": "A job recovered after lease expiry and completed on attempt 2",
+      "ok": true,
+      "detail": "completed attempts=2"
+    },
+    {
+      "check": "A no duplicate chunks or documents after the retry",
+      "ok": true,
+      "detail": "chunks=2 distinct=2 documents=1"
+    },
+    {
+      "check": "B PostgreSQL paused: readiness 503, API 503 (no 500, no details)",
+      "ok": true,
+      "detail": "ready=503 documents=503"
+    },
+    {
+      "check": "B liveness unaffected by the dependency outage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "B recovered without restarts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C storage down: upload 503, nothing stored",
+      "ok": true,
+      "detail": "503 {\"detail\": \"The service could not answer in time (a dependency may be unavailable); please retry.\"}"
+    },
+    {
+      "check": "C readiness reports object storage unavailable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C uploads work again after storage restart",
+      "ok": true,
+      "detail": "202"
+    },
+    {
+      "check": "D concurrent duplicate submissions deduplicated (one job per document)",
+      "ok": true,
+      "detail": "16 answers -> 8 jobs"
+    },
+    {
+      "check": "D every job executed exactly once across two workers",
+      "ok": true,
+      "detail": "[('completed', 1), ('completed', 1), ('completed', 1), ('completed', 1), ('completed', 1), ('completed', 1), ('completed', 1), ('completed', 1)]"
+    },
+    {
+      "check": "E deletion during processing: ingest cancelled or finished, purge completed, nothing left",
+      "ok": true,
+      "detail": "ingest=cancelled/document_deleted purge=completed chunks=0"
+    }
+  ]
+}

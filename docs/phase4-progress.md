@@ -31,7 +31,11 @@ Merge order for later (not done here): Phase 3 branch into `main` first, then th
 | 1 | Baseline audit, branch | done | table above |
 | 2-6 | Config / OIDC / RLS / jobs / storage core | done (`0e14632`) | 357 existing tests pass with RLS-enforced runtime roles |
 | 7-10 | Tests, frontend, Docker, observability configs, drills, CI | done (`a121a30`) | full Windows run (PostgreSQL + MinIO + real Keycloak): 545 passed, 3 failed (timing-flaky retry tests, fixed: deterministic back-off; DB-clock scheduling), 5 skipped (Tesseract absent on Windows, PostgreSQL-only tests on SQLite); affected files re-run: 157 passed |
-| 11-13 | Docker E2E, drills, load tests, benchmarks, Linux full run, evaluation gates, docs | in progress | see enterprise-hardening.md |
+| 11 | k6 load profiles on the OIDC + queue + observability stack | done (`a67003e`, `9627225`) | smoke / moderate / sustained 0 % failed, stress 3.5 % shed with 503; 0 authorization violations ([performance-benchmarks.md](performance-benchmarks.md)) |
+| 11a | Defects found by load testing, fixed with tests | done (`004cf47`, `543ffde`, `a67003e`) | pool exhaustion answered 500 → 503 + Retry-After; JWKS refresh hardened (single flight, stale-while-revalidate, 503 on IdP failure); k6 harness locked Keycloak accounts (quick-login check) and cached the error as a token |
+| 11b | Secret scan | done (`741cb36`) | gitleaks v8.24.0: full history 0 findings after triage of 3 synthetic redaction-test inputs; CI job `secrets` added (not yet run on GitHub) |
+| 12 | Drills, benchmarks, Linux full run, evaluation gates, final E2E | in progress | |
+| 13 | Documentation and final report | in progress | |
 
 ## Incidents during the run (for the record)
 
@@ -40,3 +44,9 @@ Merge order for later (not done here): Phase 3 branch into `main` first, then th
 * A stopped background pytest run left its Python process alive and ran concurrently with the next
   run on the same database: cross-process lock waits. Both processes were killed; the test session
   now takes a PostgreSQL advisory lock and refuses to run concurrently.
+* Load testing (moderate, first attempt): 79 % of requests answered 401. Root cause: Keycloak's
+  brute-force quick-login check locked accounts that k6 virtual users logged in concurrently, and
+  the k6 script cached Keycloak's error answer as a token (`Bearer undefined`). The API behaved
+  correctly; the script now logs each account in once and renews tokens.
+* Load testing (stress, first attempt): 8 HTTP 500 from SQLAlchemy pool checkout timeouts; fixed
+  (503 + Retry-After) before the measured runs.

@@ -68,6 +68,7 @@ or tenant ids (`test_metrics_use_low_cardinality_labels`).
 | `nexus_retrieval_duration_seconds`, `nexus_rag_answer_duration_seconds` | histogram | mode / answer_mode |
 | `nexus_object_storage_operations_total`, `nexus_object_storage_duration_seconds` | counter, histogram | operation, outcome |
 | `nexus_db_pool_connections` | gauge | engine (api / worker), state |
+| `nexus_http_request_deadline_exceeded_total` (requests answered 503 because no response started within `REQUEST_TIMEOUT_SECONDS`) | counter | — |
 | `nexus_db_pool_timeouts_total` (requests shed with 503 because no pooled connection became free within `DB_POOL_TIMEOUT_SECONDS`) | counter | — |
 | `nexus_extractions_total`, `nexus_review_actions_total` | counter | provider, doc_type, outcome / action |
 | `nexus_documents_uploaded_total`, `nexus_documents_deleted_total`, `nexus_documents_purged_total` | counter | format / reason |
@@ -99,12 +100,17 @@ uses the no-op tracer.
 | Endpoint | Semantics |
 |---|---|
 | `GET /api/health/live` | the process serves HTTP; touches no dependency (no restart loops during a database blip) |
-| `GET /api/health/ready` | 200 when database, schema revision, object storage and (OIDC) the IdP discovery are OK, else 503. Body: component states only (`ok` / `unavailable` / `outdated`; `workers`: `ok` / `none_active`, `embedding_model`: `loaded` / `not_loaded` mark `degraded`). No hosts, versions, credentials or error texts |
+| `GET /api/health/ready` | 200 when database, schema revision, object storage and (OIDC) the IdP discovery are OK, else 503. Body: component states only (`ok` / `unavailable` / `outdated`; `workers`: `ok` / `none_active`, `embedding_model`: `loaded` / `not_loaded` mark `degraded`). No hosts, versions, credentials or error texts. The probes run concurrently in worker threads, each bounded by `READINESS_TIMEOUT_SECONDS` (3 s); the database probe uses a **new** connection with `connect_timeout` (a pooled connection to a frozen server would block indefinitely) |
 | `GET /api/health` | public capability summary for the UI (unchanged contract + `auth_mode`, `processing_mode`, `storage_backend`) |
 | worker | `python -m backend.app.worker --healthcheck` checks the heartbeat file (Compose healthcheck); heartbeats are also stored in `worker_heartbeats` for readiness |
 
 Connection-level database failures return **503** with `Retry-After` (never a 500 with details)
-(`test_api_answers_503_not_500_when_the_database_is_unreachable`, `test_readiness_*`).
+(`test_api_answers_503_not_500_when_the_database_is_unreachable`, `test_readiness_*`). So do an
+exhausted connection pool (`nexus_db_pool_timeouts_total`) and a request whose response has not
+started within `REQUEST_TIMEOUT_SECONDS` (default 60 s; `nexus_http_request_deadline_exceeded_total`).
+The deadline protects clients from dependencies that hang instead of failing; the abandoned
+handler finishes in its worker thread and its late answer is discarded, so retried writes rely on
+`Idempotency-Key` and duplicate-job detection.
 
 ## Local stack
 

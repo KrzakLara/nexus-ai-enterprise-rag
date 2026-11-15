@@ -107,6 +107,7 @@ evaluation passes.
 | `workers: none_active` | `docker compose ps worker`, worker logs | uploads still queue; start / scale workers |
 | queue backlog alert | `nexus_jobs_queue_depth`, oldest age | scale workers (`--scale worker=N`), check failures |
 | API answers 503 "busy", `NexusDatabasePoolExhausted` | `nexus_db_pool_timeouts_total`, `nexus_db_pool_connections`, CPU of the api container | saturation: requests are shed instead of queueing; scale API replicas or CPU, or raise `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` within PostgreSQL `max_connections` |
+| API answers 503 "could not answer in time", `NexusRequestDeadlineExceeded` | readiness (bounded probes say which dependency), `docker compose ps`, DB / MinIO / IdP health | a dependency hangs instead of failing (e.g. a frozen database); handlers resume when it answers; nothing to repair (verified by the resilience drill) |
 | bearer requests 503 `idp_unavailable` | IdP health, `jwks_refresh_failed` log events | cached JWKS keys keep validating known kids for `OIDC_JWKS_STALE_MAX_SECONDS`; restore the IdP |
 | users get `user_temporarily_disabled` at the IdP | Keycloak events | brute-force quick-login lock (two logins of one account within 1 s, e.g. scripts sharing accounts); clears after 60 s; make clients reuse / refresh tokens |
 | auth failure spike | `nexus_auth_failures_total` by reason | `invalid_signature` / `unknown_key` after an IdP key change normally clears within `OIDC_JWKS_MIN_REFRESH_SECONDS`; sustained `invalid_credentials` = credential stuffing (rate-limit at the edge) |

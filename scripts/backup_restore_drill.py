@@ -56,7 +56,8 @@ def psql(db: str, sql: str, user: str = "nexus", password: str | None = None) ->
 def mc(*args):
     env_args = ["-e", f"MC_HOST_local=http://{ARGS.minio_user}:{ARGS.minio_password}@minio:9000"]
     return subprocess.run(["docker", "run", "--rm", "--network", f"{ARGS.project}_default", *env_args,
-                           "-v", f"{BACKUP}:/backup", ARGS.mc_image, *args], capture_output=True, text=True, timeout=600)
+                           "-v", f"{BACKUP}:/backup", ARGS.mc_image, *args], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=600)
 
 
 def counts(db: str) -> dict:
