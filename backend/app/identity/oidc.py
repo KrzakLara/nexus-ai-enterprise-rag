@@ -7,7 +7,8 @@ RP-Initiated Logout 1.0.
 Token validation never trusts an unverified payload. Order of checks:
   1. the header `alg` must be in the explicit allowlist (asymmetric only; `none` / HS* refused)
   2. a `kid` is required; the key comes from the IdP's JWKS (cached; an unknown kid triggers one
-     rate-limited refetch, which is how key rotation is picked up)
+     rate-limited refetch, which is how key rotation is picked up; cached keys survive an IdP
+     outage for a bounded time, see JWKSCache)
   3. the JWK must fit the algorithm (kty, optional `alg` / `use`)
   4. signature, `iss` (exact), `aud`, `exp` / `nbf` / `iat` (with bounded clock skew)
   5. token-type specific checks: `nonce` and `azp` for ID tokens, `typ` for access tokens,
@@ -16,6 +17,7 @@ Token validation never trusts an unverified payload. Order of checks:
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -31,6 +33,7 @@ from ..config import Settings, settings as default_settings
 from .crypto import constant_time_equal
 
 BACKCHANNEL_LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout"
+log = logging.getLogger("nexus.auth.oidc")
 _KTY_FOR_ALG = {"RS": "RSA", "PS": "RSA", "ES": "EC"}
 
 
@@ -58,35 +61,107 @@ class ProviderMetadata:
 
 
 class JWKSCache:
-    """Thread-safe JWKS cache. A token with an unknown `kid` causes at most one refetch per
-    `min_refresh_seconds`, so random kids cannot turn the API into an IdP traffic amplifier."""
+    """Thread-safe JWKS cache.
+
+    * keys are refreshed after `ttl_seconds`; a token with an unknown `kid` triggers a refetch (key
+      rotation), at most one attempt per `min_refresh_seconds`, so random kids cannot turn the API
+      into an IdP traffic amplifier;
+    * single flight: one thread fetches, outside the lock. Threads whose key is cached keep using
+      it meanwhile; threads that need a key the cache does not have wait for that fetch;
+    * stale-while-revalidate: when a refresh fails (IdP slow or down), keys fetched less than
+      `stale_max_seconds` ago stay usable for the kids they contain, and the next attempt waits
+      `min_refresh_seconds`. An IdP outage therefore neither rejects valid tokens nor makes every
+      request wait for an HTTP timeout. A key removed at the IdP disappears at the next successful
+      refresh. Without a usable key the IdP error propagates (the API answers 503, not 401).
+    """
 
     def __init__(self, fetch: Callable[[], dict], ttl_seconds: int, min_refresh_seconds: int,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, stale_max_seconds: int = 3600,
+                 wait_seconds: float = 15.0):
         self._fetch, self._ttl, self._min_refresh, self._clock = fetch, ttl_seconds, min_refresh_seconds, clock
+        self._stale_max = max(stale_max_seconds, ttl_seconds)
+        self._wait = wait_seconds
         self._keys: dict[str, dict] = {}
         self._fetched_at: float | None = None
-        self._lock = threading.Lock()
-        self.fetch_count = 0
+        self._last_attempt: float | None = None
+        self._last_error: OIDCError | None = None
+        self._refreshing = False
+        self._cond = threading.Condition()
+        self.fetch_count = 0  # successful fetches
+        self.stale_uses = 0   # keys served past their TTL because a refresh failed or was in flight
 
-    def _refresh(self) -> None:
-        document = self._fetch()
+    @staticmethod
+    def _parse(document: dict) -> dict[str, dict]:
         keys = document.get("keys") if isinstance(document, dict) else None
         if not isinstance(keys, list):
             raise OIDCError("jwks_invalid", "JWKS document has no 'keys' array")
-        self._keys = {k["kid"]: k for k in keys if isinstance(k, dict) and isinstance(k.get("kid"), str)}
-        self._fetched_at = self._clock()
-        self.fetch_count += 1
+        return {k["kid"]: k for k in keys if isinstance(k, dict) and isinstance(k.get("kid"), str)}
+
+    def _cached(self, kid: str, limit: float) -> dict | None:
+        """The cached key for `kid` if the key set is at most `limit` seconds old (lock held)."""
+        jwk = self._keys.get(kid)
+        if jwk is None or self._fetched_at is None or self._clock() - self._fetched_at > limit:
+            return None
+        return jwk
+
+    def _stale(self, kid: str) -> dict | None:
+        jwk = self._cached(kid, self._stale_max)
+        if jwk is not None:
+            self.stale_uses += 1
+        return jwk
 
     def get(self, kid: str) -> dict:
-        with self._lock:
-            now = self._clock()
-            expired = self._fetched_at is None or now - self._fetched_at > self._ttl
-            if expired:
-                self._refresh()
-            elif kid not in self._keys and now - (self._fetched_at or 0) >= self._min_refresh:
-                self._refresh()  # key rotation: a new signing key appeared at the IdP
-            jwk = self._keys.get(kid)
+        give_up = time.monotonic() + self._wait  # real time: the injected clock may be frozen in tests
+        with self._cond:
+            while True:
+                jwk = self._cached(kid, self._ttl)
+                if jwk is not None:
+                    return jwk
+                if self._refreshing:  # single flight: use what we have, or wait for that fetch
+                    jwk = self._stale(kid)
+                    if jwk is not None:
+                        return jwk
+                    remaining = give_up - time.monotonic()
+                    if remaining <= 0:
+                        raise OIDCError("idp_unavailable", "the JWKS refresh did not complete in time")
+                    self._cond.wait(remaining)
+                    continue
+                now = self._clock()
+                if self._last_attempt is not None and now - self._last_attempt < self._min_refresh:
+                    jwk = self._stale(kid)  # rate limit / back-off after a failed attempt
+                    if jwk is not None:
+                        return jwk
+                    if self._last_error is not None:
+                        raise OIDCError(self._last_error.code, "the IdP JWKS could not be refreshed")
+                    raise TokenValidationError("unknown_key", "token signed with a key that is not in the IdP JWKS")
+                self._refreshing, self._last_attempt = True, now
+                break
+        fresh: dict[str, dict] | None = None
+        error: OIDCError | None = None
+        jwk = None
+        try:
+            fresh = self._parse(self._fetch())
+        except OIDCError as exc:
+            error = exc
+        except Exception as exc:  # noqa: BLE001 - a malformed IdP answer must not wedge the cache
+            error = OIDCError("idp_invalid_response", f"JWKS refresh failed: {type(exc).__name__}")
+        finally:  # whatever happened, the refresh is over: never leave waiters / later refreshes stuck
+            with self._cond:
+                self._refreshing = False
+                if fresh is not None:
+                    self._keys, self._fetched_at, self._last_error = fresh, self._clock(), None
+                    self.fetch_count += 1
+                    jwk = self._keys.get(kid)
+                elif error is not None:
+                    self._last_error = error
+                    jwk = self._stale(kid)
+                self._cond.notify_all()
+        if error is not None:
+            log.warning("jwks_refresh_failed", extra={"event": "jwks_refresh_failed", "reason": error.code,
+                                                      "served_cached_key": jwk is not None})
+            if jwk is None:
+                raise error
+            return jwk
         if jwk is None:
             raise TokenValidationError("unknown_key", "token signed with a key that is not in the IdP JWKS")
         return jwk
@@ -156,7 +231,8 @@ class OIDCClient:
         self._metadata: ProviderMetadata | None = None
         self._metadata_at = 0.0
         self._lock = threading.Lock()
-        self.jwks = JWKSCache(self._fetch_jwks, cfg.oidc_jwks_cache_seconds, cfg.oidc_jwks_min_refresh_seconds)
+        self.jwks = JWKSCache(self._fetch_jwks, cfg.oidc_jwks_cache_seconds, cfg.oidc_jwks_min_refresh_seconds,
+                              stale_max_seconds=cfg.oidc_jwks_stale_max_seconds)
 
     # ----------------------------------------------------------------- discovery / transport
     def _get_json(self, url: str) -> dict:

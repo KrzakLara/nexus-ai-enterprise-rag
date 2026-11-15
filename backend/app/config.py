@@ -135,6 +135,9 @@ class Settings:
     oidc_jwks_cache_seconds: int = int(os.getenv("OIDC_JWKS_CACHE_SECONDS", "300"))
     # An unknown `kid` triggers at most one JWKS refetch per this interval (no refetch storms).
     oidc_jwks_min_refresh_seconds: int = int(os.getenv("OIDC_JWKS_MIN_REFRESH_SECONDS", "10"))
+    # Cached keys stay usable this long when the IdP cannot be reached for a refresh
+    # (stale-while-revalidate); removed keys are dropped at the next successful refresh.
+    oidc_jwks_stale_max_seconds: int = int(os.getenv("OIDC_JWKS_STALE_MAX_SECONDS", "3600"))
     # Bearer access tokens for non-browser API clients (aud must contain oidc_api_audience).
     oidc_accept_bearer: bool = _flag("OIDC_ACCEPT_BEARER", "true")
     oidc_api_audience: str = os.getenv("OIDC_API_AUDIENCE", "nexus-api")

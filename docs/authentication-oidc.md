@@ -57,7 +57,13 @@ random 256-bit token whose SHA-256 is the only thing in the database. Nothing is
 2. `kid` is required; the key comes from the IdP JWKS (discovery `jwks_uri`). The cache refreshes
    after `OIDC_JWKS_CACHE_SECONDS`; an **unknown kid** triggers at most one refetch per
    `OIDC_JWKS_MIN_REFRESH_SECONDS`, which is how key rotation is picked up without letting random
-   kids turn the API into an IdP traffic amplifier;
+   kids turn the API into an IdP traffic amplifier. Refreshes are single-flight (one fetch, outside
+   the lock; requests with a cached key keep going). If a refresh fails because the IdP is slow or
+   down, keys fetched less than `OIDC_JWKS_STALE_MAX_SECONDS` (default 1 h) ago stay usable for the
+   kids they contain and the next attempt waits `OIDC_JWKS_MIN_REFRESH_SECONDS`; a kid that is not
+   cached is then answered with **503 `idp_unavailable`** (+ `Retry-After`), never with a 401 that
+   would make clients discard valid tokens. A key removed at the IdP disappears at the next
+   successful refresh;
 3. the JWK must match the algorithm (`kty`, optional `alg` / `use=sig`);
 4. signature, exact `iss`, `aud`, `exp`, `nbf`, `iat` (±`OIDC_CLOCK_SKEW_SECONDS`, default 30 s);
 5. ID tokens: `nonce` (constant-time compare), `azp` (required when there are several audiences),
@@ -126,6 +132,12 @@ group tree `/tenants/{northstar,otherco}/{groups,roles}/…`, a group-membership
 and an audience mapper (`nexus-api`). Users are the synthetic personas (password `DemoPass123!`,
 e-mail verified) plus two negative-test identities (`nogroups@northstar.demo` without tenant,
 `ambiguous@demo.test` in two tenants). All secrets in the realm file are local-only.
+
+The realm keeps Keycloak's brute-force protection on. Its quick-login check temporarily locks an
+account that logs in twice within a second (`user_temporarily_disabled`), concurrent successful
+logins included; this was observed under load when many k6 virtual users shared five accounts.
+Clients should log in once and renew with the refresh token (the k6 script and the resilience
+drill do); a temporarily locked account recovers after `minimumQuickLoginWaitSeconds` (60 s).
 
 Any standards-compliant provider works by configuration: issue a group claim with full paths (or
 map your IdP groups to the `/tenants/...` convention), an audience for API tokens, register the

@@ -4,6 +4,7 @@ through the backend (BFF), server-side sessions, CSRF, identity mapping and sess
 Uses the in-process fake IdP (real RSA / EC signatures). The `scenario` fixture runs every API test
 on SQLite and on PostgreSQL (runtime role with row-level security).
 """
+import threading
 import time
 from dataclasses import replace
 from datetime import timedelta
@@ -193,6 +194,102 @@ def test_key_rotation_is_picked_up_and_unknown_kids_are_rate_limited(idp):
     with pytest.raises(TokenValidationError) as err:
         _validate(idp, old, cache)
     assert err.value.code == "unknown_key"
+
+
+def test_jwks_outage_keeps_known_keys_usable_but_never_admits_unknown_ones(idp):
+    """Stale-while-revalidate: an IdP outage during a JWKS refresh must not reject every valid
+    token (found under load: Keycloak saturated, JWKS TTL expired -> all bearer requests 401)."""
+    state = {"down": False}
+
+    def fetch():
+        if state["down"]:
+            raise oidc_mod.OIDCError("idp_unavailable", "IdP down")
+        idp.jwks_requests += 1
+        return {"keys": [jwk for _, jwk in idp.keys.values()]}
+    cache = JWKSCache(fetch, ttl_seconds=0, min_refresh_seconds=0, stale_max_seconds=3600)
+    assert _validate(idp, idp.sign(idp.claims("a", [])), cache)["sub"] == "a"
+    state["down"] = True
+    time.sleep(0.01)  # TTL expired: a refresh is attempted and fails
+    assert _validate(idp, idp.sign(idp.claims("b", [])), cache)["sub"] == "b"
+    assert cache.stale_uses == 1
+    idp.keys["k9"] = rsa_key("k9")
+    with pytest.raises(oidc_mod.OIDCError) as err:  # a key we never saw cannot be trusted while down
+        _validate(idp, idp.sign(idp.claims("c", []), kid="k9"), cache)
+    assert err.value.code == "idp_unavailable"
+
+
+def test_jwks_refresh_is_single_flight_and_backs_off_after_a_failure(idp):
+    now = {"t": 0.0}
+    release, in_fetch = threading.Event(), threading.Event()
+    state = {"calls": 0, "down": False, "block": False}
+
+    def fetch():
+        state["calls"] += 1
+        if state["block"]:
+            in_fetch.set()
+            assert release.wait(5)
+        if state["down"]:
+            raise oidc_mod.OIDCError("idp_unavailable", "IdP down")
+        return {"keys": [jwk for _, jwk in idp.keys.values()]}
+
+    cache = JWKSCache(fetch, ttl_seconds=300, min_refresh_seconds=10, clock=lambda: now["t"])
+    k1 = cache.get("k1")
+    # the TTL expires and the IdP adds a key; the refresh blocks inside fetch()
+    now["t"], state["block"] = 301.0, True
+    idp.keys["k2"] = rsa_key("k2")
+    out = {}
+    refresher = threading.Thread(target=lambda: out.update(a=cache.get("k1")))
+    refresher.start()
+    assert in_fetch.wait(5)
+    assert cache.get("k1") == k1                      # cached key served while the fetch is in flight
+    waiter = threading.Thread(target=lambda: out.update(c=cache.get("k2")))
+    waiter.start()
+    time.sleep(0.1)
+    assert "c" not in out                             # a kid the cache lacks waits for that fetch ...
+    release.set()
+    refresher.join(5)
+    waiter.join(5)
+    assert out["a"] == k1 and out["c"]["kid"] == "k2" # ... and then gets the new key
+    assert state["calls"] == 2                        # one refresh for three concurrent callers
+    # the IdP goes down after the next TTL: one failed attempt, then back-off on the cached keys
+    state["block"], state["down"] = False, True
+    now["t"] = 700.0
+    assert cache.get("k1") == k1 and state["calls"] == 3
+    now["t"] = 705.0
+    assert cache.get("k2")["kid"] == "k2" and state["calls"] == 3   # within back-off: no request
+    with pytest.raises(oidc_mod.OIDCError) as err:    # an unseen kid is an IdP problem (503), not 401
+        cache.get("never-seen")
+    assert err.value.code == "idp_unavailable" and not isinstance(err.value, TokenValidationError)
+    now["t"] = 711.0                                  # back-off over: the next call tries again
+    assert cache.get("k1") == k1 and state["calls"] == 4
+    # beyond stale_max the cached keys are no longer trusted
+    now["t"] = 301.0 + 3601
+    with pytest.raises(oidc_mod.OIDCError):
+        cache.get("k1")
+
+
+def test_an_unexpected_jwks_fetch_error_does_not_wedge_the_cache(idp):
+    calls = {"n": 0}
+
+    def fetch():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("malformed discovery document")  # not an OIDCError
+        return {"keys": [jwk for _, jwk in idp.keys.values()]}
+    cache = JWKSCache(fetch, ttl_seconds=300, min_refresh_seconds=0)
+    with pytest.raises(oidc_mod.OIDCError) as err:
+        cache.get("k1")
+    assert err.value.code == "idp_invalid_response"
+    assert cache.get("k1")["kid"] == "k1" and calls["n"] == 2  # the refresh flag was released
+
+
+def test_bearer_requests_get_503_not_401_when_the_idp_cannot_be_reached(oidc_app):
+    client, _, idp, cfg = oidc_app
+    idp.down = True  # no JWKS was ever fetched by this client: nothing to fall back to
+    r = client.get("/api/documents", headers={"Authorization": "Bearer " + idp.access_token(
+        "kc-finance", [N + "finance"], email="finance@northstar.demo")})
+    assert r.status_code == 503 and r.json()["detail"]["code"] == "idp_unavailable"
+    assert r.headers["retry-after"] == "5"
 
 
 def test_id_token_nonce_azp_and_typ_checks(idp):
