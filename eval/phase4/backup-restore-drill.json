@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-11-15T19:42:33Z",
+  "backup_dir": "backups\\20261115T194113Z",
+  "checks": 8,
+  "passed": 8,
+  "failed": 0,
+  "timings": {
+    "backup_s": 2.16,
+    "restore_s": 5.26,
+    "embedding_rebuild_s": 54.62
+  },
+  "row_counts": {
+    "users": 7,
+    "documents": 491,
+    "document_grants": 35,
+    "document_versions": 491,
+    "chunks": 536,
+    "chunk_embeddings": 536,
+    "document_processing": 31,
+    "extractions": 31,
+    "extraction_fields": 320,
+    "review_events": 33,
+    "audit_events": 4698,
+    "processing_jobs": 960
+  },
+  "results": [
+    {
+      "check": "1 database dump, roles dump and object mirror created",
+      "ok": true,
+      "detail": "dump=1839676 B objects=31 "
+    },
+    {
+      "check": "2 restore into a new database and a new bucket",
+      "ok": true,
+      "detail": "b''"
+    },
+    {
+      "check": "3 row counts identical in every application table",
+      "ok": true,
+      "detail": "{'users': 7, 'documents': 491, 'document_grants': 35, 'document_versions': 491, 'chunks': 536, 'chunk_embeddings': 536, 'document_processing': 31, 'extractions': 31, 'extraction_fields': 320, 'review_events': 33, 'audit_events': 4698, 'processing_jobs': 960}"
+    },
+    {
+      "check": "3 Alembic revision restored",
+      "ok": true,
+      "detail": "('0008_row_level_security', '0008_row_level_security')"
+    },
+    {
+      "check": "3 row-level security enabled + forced, same policies",
+      "ok": true,
+      "detail": "('15', ('44', '44'))"
+    },
+    {
+      "check": "3 runtime role: no rows without context, same visible documents as the original",
+      "ok": true,
+      "detail": "('0', ['COMMIT'], ['COMMIT'])"
+    },
+    {
+      "check": "3 every restored object matches its recorded SHA-256",
+      "ok": true,
+      "detail": "b'{\"objects_checked\": 31, \"objects_bad\": []}\\n'"
+    },
+    {
+      "check": "4 embeddings rebuilt from persisted chunks equal the originals",
+      "ok": true,
+      "detail": "(b'model=intfloat/multilingual-e5-small chunks=536 up_to_date=0 embedded=536 coverage=536/536 elapsed=51.8s\\n', b'{\"original_vectors\": 536, \"rebuilt_vectors\": 536, \"compared\": 536, \"max_cosine_distance\": 2.2470914018413168e-13}\\n')"
+    }
+  ]
+}
