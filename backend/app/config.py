@@ -109,6 +109,11 @@ class Settings:
     db_pool_size: int = int(os.getenv("DB_POOL_SIZE", "5"))
     db_max_overflow: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
     db_pool_timeout: float = float(os.getenv("DB_POOL_TIMEOUT_SECONDS", "10"))
+    # A request whose response has not started after this many seconds is answered 503 (a
+    # dependency hangs instead of failing). 0 disables the deadline.
+    request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
+    # Upper bound for each readiness probe (database, object storage, IdP).
+    readiness_timeout_seconds: float = float(os.getenv("READINESS_TIMEOUT_SECONDS", "3"))
     db_connect_timeout: int = int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "5"))
     db_statement_timeout_ms: int = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "60000"))
     # Refuse to start when the runtime database role is a superuser or has BYPASSRLS.

@@ -124,6 +124,47 @@ def test_duplicate_reindex_requests_share_one_job(queued):
     assert client.post("/api/documents/d_fin/reindex", headers=token("hr@northstar.demo"), json={}).status_code == 404
 
 
+def test_concurrent_duplicate_submissions_create_exactly_one_job(queued):
+    """Found by the resilience drill: "unfinished job? else enqueue" raced when two requests for
+    one document arrived together. Advisory locks make check-and-enqueue atomic (PostgreSQL)."""
+    import threading
+    import time
+
+    from backend.app import lifecycle, main
+    from backend.app.database import set_security_context, user_context
+
+    _, _, factory, _ = queued
+    if factory.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("concurrent sessions need PostgreSQL (SQLite serializes writers itself)")
+    api_factory, _ = api_factories(factory)
+    barrier, results, errors = threading.Barrier(2), [], []
+
+    def submit():
+        try:
+            with api_factory() as db:
+                set_security_context(db, user_context("northstar", "u4"))
+                user, doc = db.get(User, "u4"), db.get(Document, "d_fin")
+                barrier.wait(10)
+                job, created = lifecycle.submit(db, user, "reindex", doc, {"force": True}, main.settings)
+                time.sleep(0.3)  # keep the transaction open: the other submission must wait, not race
+                db.commit()
+                results.append((job.id, created))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+    threads = [threading.Thread(target=submit) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    assert not errors, errors
+    assert sorted(created for _, created in results) == [False, True]
+    assert len({job_id for job_id, _ in results}) == 1
+    with factory() as db:
+        jobs = db.scalars(select(ProcessingJob).where(ProcessingJob.document_id == "d_fin",
+                                                      ProcessingJob.job_type == "reindex")).all()
+    assert len(jobs) == 1
+
+
 def test_transient_storage_failure_retries_with_backoff_then_succeeds(queued, monkeypatch):
     client, token, factory, worker = queued
     finance = token("finance@northstar.demo")

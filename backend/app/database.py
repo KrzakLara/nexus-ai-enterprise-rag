@@ -23,6 +23,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
@@ -114,6 +115,28 @@ def worker_engine() -> Engine:
     if _worker_engine is None:
         _worker_engine = make_engine(settings.worker_database_url, "worker")
     return _worker_engine
+
+
+_PROBE_ENGINES: dict[str, Engine] = {}
+
+
+def probe_engine(bind: Engine) -> Engine:
+    """Engine for health probes.
+
+    PostgreSQL: a NEW connection per probe (NullPool) with a short connect timeout and statement
+    timeout. A pooled connection to a server that is frozen but still accepts TCP blocks
+    indefinitely (libpq has no client-side query timeout); a new connection fails after
+    connect_timeout instead. SQLite: the bind itself (local file / in-memory test database).
+    """
+    if bind.dialect.name != "postgresql":
+        return bind
+    key = bind.url.render_as_string(hide_password=False)
+    probe = _PROBE_ENGINES.get(key)
+    if probe is None:
+        probe = create_engine(bind.url, poolclass=NullPool, connect_args={
+            "connect_timeout": 2, "application_name": "nexus-probe", "options": "-c statement_timeout=2000"})
+        _PROBE_ENGINES[key] = probe
+    return probe
 
 
 def get_db() -> Generator[Session, None, None]:

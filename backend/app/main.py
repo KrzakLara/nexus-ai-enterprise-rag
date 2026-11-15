@@ -11,7 +11,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from anyio import to_thread
+from anyio import create_task_group, move_on_after, to_thread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from . import lifecycle
 from .auth import current_user
 from .config import assert_secure_configuration, settings
-from .database import assert_runtime_role, engine, get_db, worker_engine
+from .database import assert_runtime_role, engine, get_db, probe_engine, worker_engine
 from .docintel.ocr import ocr_available
 from .docintel.parsing import parse_document
 from .docintel_api import router as docintel_router
@@ -42,7 +42,7 @@ from .models import AuditEvent, Chunk, Document, DocumentGrant, ProcessingJob, U
 from .observability.logging import configure_logging
 from .observability.metrics import (DB_POOL, DB_POOL_TIMEOUTS, QUEUE_DEPTH, RAG_DURATION, RETRIEVAL_DURATION,
                                     register_collectors, start_metrics_server)
-from .observability.middleware import RequestContextMiddleware
+from .observability.middleware import RequestContextMiddleware, RequestDeadlineMiddleware
 from .observability.tracing import init_tracing, span
 from .rag import answer
 from .retrieval import RetrievalMode, RetrievalUnavailable, retrieve
@@ -109,6 +109,8 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(docintel_router)
 app.include_router(lifecycle_router)
+# innermost: the 503 of the deadline passes through CORS and the request log / metrics
+app.add_middleware(RequestDeadlineMiddleware, seconds=settings.request_timeout_seconds)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.frontend_origins),
@@ -209,43 +211,70 @@ def liveness():
     return {"status": "alive"}
 
 
-@app.get("/api/health/ready")
-def readiness(response: Response, db: Session = Depends(get_db)):
-    """Ready to serve traffic: critical dependencies reachable. Component states only: no hosts,
-    versions, credentials or exception texts."""
+def _database_probe(bind) -> dict[str, str]:
     checks: dict[str, str] = {}
+    probe = probe_engine(bind)
     try:
-        db.execute(text("SELECT 1"))
-        checks["database"] = "ok"
+        with probe.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            checks["database"] = "ok"
+            try:
+                checks["schema"] = "ok" if current_revision(probe) == head_revision() else "outdated"
+            except Exception:  # noqa: BLE001
+                checks["schema"] = "unavailable"
+            if settings.processing_mode == "queue":
+                try:
+                    cutoff = lifecycle.now_utc().timestamp() - settings.worker_stale_seconds
+                    beats = conn.execute(select(WorkerHeartbeat.last_seen_at)).scalars().all()
+                    fresh = [b for b in beats if lifecycle._aware(b).timestamp() >= cutoff]
+                    checks["workers"] = "ok" if fresh else "none_active"  # degraded: uploads still queue
+                except Exception:  # noqa: BLE001
+                    checks["workers"] = "unknown"
     except Exception:  # noqa: BLE001
-        db.rollback()
-        checks["database"] = "unavailable"
-    if checks["database"] == "ok":
-        try:
-            checks["schema"] = "ok" if current_revision(db.get_bind()) == head_revision() else "outdated"
-        except Exception:  # noqa: BLE001
-            checks["schema"] = "unavailable"
-    try:
-        checks["object_storage"] = "ok" if default_store(settings).healthy() else "unavailable"
-    except StorageError:
-        checks["object_storage"] = "unavailable"
-    if settings.oidc_auth:
-        from .identity.oidc import OIDCError, get_oidc_client
+        checks = {"database": "unavailable"}
+    return checks
 
-        try:
-            get_oidc_client(settings).metadata()
-            checks["identity_provider"] = "ok"
-        except OIDCError:
-            checks["identity_provider"] = "unavailable"
-    if settings.processing_mode == "queue" and checks["database"] == "ok":
-        try:
-            cutoff = lifecycle.now_utc().timestamp() - settings.worker_stale_seconds
-            beats = db.scalars(select(WorkerHeartbeat.last_seen_at)).all()
-            fresh = [b for b in beats if lifecycle._aware(b).timestamp() >= cutoff]
-            checks["workers"] = "ok" if fresh else "none_active"  # degraded: uploads still queue
-        except Exception:  # noqa: BLE001
-            db.rollback()
-            checks["workers"] = "unknown"
+
+def _storage_probe() -> str:
+    try:
+        return "ok" if default_store(settings).healthy() else "unavailable"
+    except StorageError:
+        return "unavailable"
+
+
+def _idp_probe() -> str:
+    from .identity.oidc import OIDCError, get_oidc_client
+
+    try:
+        get_oidc_client(settings).metadata()
+        return "ok"
+    except OIDCError:
+        return "unavailable"
+
+
+@app.get("/api/health/ready")
+async def readiness(response: Response, db: Session = Depends(get_db)):
+    """Ready to serve traffic: critical dependencies reachable. Component states only: no hosts,
+    versions, credentials or exception texts.
+
+    Every probe runs in a worker thread for at most READINESS_TIMEOUT_SECONDS, concurrently; a
+    probe that has not answered by then reports `unavailable` (found by the resilience drill: with
+    PostgreSQL frozen, the old check waited on a pooled connection until the client gave up)."""
+    results: dict[str, object] = {}
+
+    async def bounded(name: str, probe, *args) -> None:
+        with move_on_after(settings.readiness_timeout_seconds):
+            results[name] = await to_thread.run_sync(probe, *args, abandon_on_cancel=True)
+
+    async with create_task_group() as group:
+        group.start_soon(bounded, "database", _database_probe, db.get_bind())
+        group.start_soon(bounded, "object_storage", _storage_probe)
+        if settings.oidc_auth:
+            group.start_soon(bounded, "identity_provider", _idp_probe)
+    checks: dict[str, str] = dict(results.get("database") or {"database": "unavailable"})
+    checks["object_storage"] = str(results.get("object_storage") or "unavailable")
+    if settings.oidc_auth:
+        checks["identity_provider"] = str(results.get("identity_provider") or "unavailable")
     checks["embedding_model"] = "loaded" if get_embedder().is_loaded else "not_loaded"
     critical = ("database", "schema", "object_storage", "identity_provider")
     ready = all(checks.get(name, "ok") == "ok" for name in critical)

@@ -10,3 +10,4 @@ services:
   api:
     environment:
       JOB_LEASE_SECONDS: "20"
+      REQUEST_TIMEOUT_SECONDS: "10"   # a hanging dependency is answered 503 well before the drill's 30 s client timeout

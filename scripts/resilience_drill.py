@@ -19,6 +19,7 @@ import argparse
 import json
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -28,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
 p.add_argument("--project", default="nexus-p4")
 p.add_argument("--files", default="compose.yaml,compose.oidc.yaml,compose.drill.yaml")
-p.add_argument("--api", default="http://localhost:8000")
+p.add_argument("--api", default="http://127.0.0.1:8000")  # not "localhost": Windows tries ::1 first (~2 s each)
 p.add_argument("--keycloak", default="http://localhost:8080")
 p.add_argument("--report", default="")
 ARGS = p.parse_args()
@@ -189,13 +190,22 @@ def scenario_d(h):
     time.sleep(15)
     docs = [d["id"] for d in api("GET", "/api/documents", h).json()][:8]
     jobs = []
-    for doc in docs:
-        for _ in range(2):  # duplicate submission
-            r = api("POST", f"/api/documents/{doc}/reindex", h, json={"force": True})
-            jobs.append(r.json()["job"]["id"])
+    for doc in docs:  # two submissions per document at the same moment (a double click, a retry)
+        barrier, answers = threading.Barrier(2), []
+
+        def submit(doc=doc, barrier=barrier, answers=answers):
+            barrier.wait(10)
+            answers.append(api("POST", f"/api/documents/{doc}/reindex", h, json={"force": True}))
+        threads = [threading.Thread(target=submit) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+        jobs += [r.json()["job"]["id"] for r in answers if r.status_code == 202]
     unique = sorted(set(jobs))
     finished = [wait_job(h, j, timeout=300) for j in unique]
-    check("D duplicate submissions deduplicated (one job per document)", len(unique) == len(docs), f"{len(jobs)} -> {len(unique)}")
+    check("D concurrent duplicate submissions deduplicated (one job per document)",
+          len(jobs) == 2 * len(docs) and len(unique) == len(docs), f"{len(jobs)} answers -> {len(unique)} jobs")
     check("D every job executed exactly once across two workers",
           all(j.get("status") == "completed" and j.get("attempts") == 1 for j in finished),
           [(j.get("status"), j.get("attempts")) for j in finished])
