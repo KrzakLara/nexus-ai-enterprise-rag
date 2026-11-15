@@ -9,6 +9,13 @@
 // Users: synthetic realm users of two tenants with different groups and roles. API calls use
 // Keycloak access tokens (bearer, aud=nexus-api) obtained with the TEST-ONLY password-grant client;
 // the `login` scenario measures the full browser login (Authorization Code + PKCE through the BFF).
+//
+// Token handling: each user logs in ONCE (setup) and the VUs renew with the refresh token. Keycloak's
+// brute-force protection (quick-login check) temporarily locks an account that logs in twice within
+// a second, which is what dozens of VUs sharing five accounts would otherwise do. A failed token
+// request is never cached (an earlier version cached the error and sent `Bearer undefined` for the
+// rest of the run). API 401 / 503 / 5xx answers are counted separately (api_unauthorized,
+// api_unavailable, api_server_errors) and still count as failed requests in http_req_failed.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
@@ -43,7 +50,8 @@ const QUESTIONS = [
 // bounds are deliberately loose: they are measurements, not pass/fail SLOs).
 const ENDPOINTS = ['ask_hybrid', 'ask_semantic', 'ask_lexical', 'list_documents', 'document_detail', 'download',
   'session_validation', 'probe_cross_tenant', 'compare', 'extraction_view', 'upload', 'job_status', 'delete',
-  'login_start', 'keycloak_login_page', 'keycloak_credentials', 'login_callback', 'session_cookie', 'keycloak_token'];
+  'login_start', 'keycloak_login_page', 'keycloak_credentials', 'login_callback', 'session_cookie', 'keycloak_token',
+  'keycloak_refresh'];
 const ENDPOINT_TRENDS = Object.fromEntries(ENDPOINTS.map(n => [`http_req_duration{name:${n}}`, ['max>=0']]));
 
 const PROFILES = {
@@ -72,26 +80,41 @@ export const options = {
 };
 
 const authzViolations = new Counter('authz_violations');
+const probeErrors = new Counter('probe_errors');
+const tokenErrors = new Counter('token_errors');
+const apiUnauthorized = new Counter('api_unauthorized');
+const apiUnavailable = new Counter('api_unavailable');
+const apiServerErrors = new Counter('api_server_errors');
 const jobQueueWait = new Trend('job_queue_wait_ms', true);
 const jobProcessing = new Trend('job_processing_ms', true);
 const jobEndToEnd = new Trend('job_end_to_end_ms', true);
 const loginDuration = new Trend('bff_login_ms', true);
 const jobsFailed = new Rate('jobs_failed');
-http.setResponseCallback(http.expectedStatuses(200, 201, 202, 404));
+http.setResponseCallback(http.expectedStatuses(200, 201, 202, 302, 404)); // 302: login redirects; 404: security probes
 
-function token(user) {
-  const res = http.post(`${KC}/realms/nexus/protocol/openid-connect/token`, {
-    grant_type: 'password', client_id: 'nexus-loadtest', client_secret: 'nexus-loadtest-local-dev-secret',
-    username: user.email, password: PASSWORD, scope: 'openid',
-  }, { tags: { name: 'keycloak_token' } });
-  check(res, { 'token issued': r => r.status === 200 });
-  const body = res.json();
-  return { access: body.access_token, expires: Date.now() + (body.expires_in - 30) * 1000 };
+const CLIENT = { client_id: 'nexus-loadtest', client_secret: 'nexus-loadtest-local-dev-secret' };
+
+function tokenRequest(form, name) {
+  const res = http.post(`${KC}/realms/nexus/protocol/openid-connect/token`, Object.assign({}, CLIENT, form),
+    { tags: { name } });
+  let body = null;
+  try { body = res.status === 200 ? res.json() : null; } catch (e) { body = null; }
+  const ok = !!(body && body.access_token && body.expires_in);
+  check(res, { 'token issued': () => ok });
+  if (!ok) { tokenErrors.add(1, { grant: form.grant_type, status: String(res.status) }); return null; }
+  return { access: body.access_token, refresh: body.refresh_token, expires: Date.now() + (body.expires_in - 30) * 1000 };
 }
+const passwordGrant = user => tokenRequest({ grant_type: 'password', username: user.email, password: PASSWORD, scope: 'openid' },
+  'keycloak_token');
+const refreshGrant = t => tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh }, 'keycloak_refresh');
 
 export function setup() {
   const sessions = {};
-  for (const user of USERS) sessions[user.email] = token(user);
+  for (const user of USERS) {
+    sessions[user.email] = passwordGrant(user);
+    if (!sessions[user.email]) throw new Error(`setup: no token for ${user.email}`);
+  }
+  sleep(1.5); // the login scenario must not log an account in again within Keycloak's quick-login window
   const reviewer = { headers: { Authorization: `Bearer ${sessions['reviewer@northstar.demo'].access}` } };
   const library = http.get(`${BASE}/api/intelligence/documents`, reviewer).json();
   const procurement = (library || []).filter(d => d.extraction_id).map(d => d.id).slice(0, 4);
@@ -100,26 +123,46 @@ export function setup() {
   for (const user of USERS) {
     own[user.email] = (http.get(`${BASE}/api/documents`, { headers: { Authorization: `Bearer ${sessions[user.email].access}` } }).json() || []).map(d => d.id);
   }
-  return { compareIds: procurement, otherTenantDoc: (others || [])[0]?.id, own };
+  return { compareIds: procurement, otherTenantDoc: (others || [])[0]?.id, own, tokens: sessions };
 }
 
 const cache = {};
-function headersFor(user) {
-  let t = cache[user.email];
-  if (!t || Date.now() > t.expires) { t = token(user); cache[user.email] = t; }
+function headersFor(user, data) {
+  let t = cache[user.email] || data.tokens[user.email];
+  if (Date.now() > t.expires) {
+    const renewed = t.refresh ? refreshGrant(t) : null;
+    if (!renewed) return null;   // counted in token_errors; try again next iteration
+    t = renewed;
+  }
+  cache[user.email] = t;
   return { headers: { Authorization: `Bearer ${t.access}` } };
+}
+
+// Server-side answers that are not the expected ones, counted by class. A 401 to a bearer request
+// means the token was rejected: renew it before the next call.
+function authResult(res, user) {
+  if (res.status === 401) {
+    apiUnauthorized.add(1);
+    if (cache[user.email]) cache[user.email] = Object.assign({}, cache[user.email], { expires: 0 });
+  } else if (res.status === 503) {
+    apiUnavailable.add(1);
+  } else if (res.status >= 500) {
+    apiServerErrors.add(1);
+  }
+  return res;
 }
 
 function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
 
 export function apiMix(data) {
   const user = USERS[exec.vu.idInTest % USERS.length];
-  const h = headersFor(user);
+  const h = headersFor(user, data);
+  if (!h) { sleep(1); return; }
   const roll = Math.random();
   if (roll < 0.45) {
     const [mode, question] = pick(QUESTIONS);
-    const res = http.post(`${BASE}/api/ask`, JSON.stringify({ question, mode }),
-      Object.assign({ tags: { name: `ask_${mode}` } }, { headers: Object.assign({ 'Content-Type': 'application/json' }, h.headers) }));
+    const res = authResult(http.post(`${BASE}/api/ask`, JSON.stringify({ question, mode }),
+      Object.assign({ tags: { name: `ask_${mode}` } }, { headers: Object.assign({ 'Content-Type': 'application/json' }, h.headers) })), user);
     check(res, { 'ask 200': r => r.status === 200 });
     if (res.status === 200) {
       const body = res.json();
@@ -132,7 +175,7 @@ export function apiMix(data) {
       if (user.tenant === 'northstar' && (body.answer || '').includes('SILVER-IBIS-73')) authzViolations.add(1, { kind: 'answer' });
     }
   } else if (roll < 0.62) {
-    const res = http.get(`${BASE}/api/documents`, Object.assign({ tags: { name: 'list_documents' } }, h));
+    const res = authResult(http.get(`${BASE}/api/documents`, Object.assign({ tags: { name: 'list_documents' } }, h)), user);
     check(res, { 'list 200': r => r.status === 200 });
     for (const d of res.status === 200 ? res.json() : []) {
       const allowed = d.title.startsWith('load-') ? d.title.startsWith(`load-${user.tenant}-`) : (data.own[user.email] || []).includes(d.id);
@@ -140,21 +183,22 @@ export function apiMix(data) {
     }
   } else if (roll < 0.70) {
     const id = pick(data.own[user.email] || ['none']);
-    check(http.get(`${BASE}/api/documents/${id}`, Object.assign({ tags: { name: 'document_detail' } }, h)), { 'detail 200': r => r.status === 200 });
+    check(authResult(http.get(`${BASE}/api/documents/${id}`, Object.assign({ tags: { name: 'document_detail' } }, h)), user), { 'detail 200': r => r.status === 200 });
   } else if (roll < 0.76) {
     const id = pick(data.own[user.email] || ['none']);
-    check(http.get(`${BASE}/api/documents/${id}/source`, Object.assign({ tags: { name: 'download' } }, h)), { 'download 200': r => r.status === 200 });
+    check(authResult(http.get(`${BASE}/api/documents/${id}/source`, Object.assign({ tags: { name: 'download' } }, h)), user), { 'download 200': r => r.status === 200 });
   } else if (roll < 0.82) {
-    check(http.get(`${BASE}/api/auth/session`, Object.assign({ tags: { name: 'session_validation' } }, h)), { 'session 200': r => r.status === 200 });
+    check(authResult(http.get(`${BASE}/api/auth/session`, Object.assign({ tags: { name: 'session_validation' } }, h)), user), { 'session 200': r => r.status === 200 });
   } else if (roll < 0.87 && data.otherTenantDoc && user.tenant === 'northstar') {
     // security probe under load: another tenant's document must be indistinguishable from a missing one
-    const res = http.get(`${BASE}/api/documents/${data.otherTenantDoc}`, Object.assign({ tags: { name: 'probe_cross_tenant' } }, h));
-    if (res.status !== 404) authzViolations.add(1, { kind: 'cross_tenant' });
+    const res = authResult(http.get(`${BASE}/api/documents/${data.otherTenantDoc}`, Object.assign({ tags: { name: 'probe_cross_tenant' } }, h)), user);
+    if (res.status === 200) authzViolations.add(1, { kind: 'cross_tenant' });   // content exposed
+    else if (res.status !== 404) probeErrors.add(1, { status: String(res.status) }); // not a leak: an error
   } else if (roll < 0.92 && user.reviewer && data.compareIds.length >= 2) {
-    const res = http.post(`${BASE}/api/intelligence/compare`, JSON.stringify({ document_ids: data.compareIds.slice(0, 2) }),
-      { headers: Object.assign({ 'Content-Type': 'application/json' }, h.headers), tags: { name: 'compare' } });
+    const res = authResult(http.post(`${BASE}/api/intelligence/compare`, JSON.stringify({ document_ids: data.compareIds.slice(0, 2) }),
+      { headers: Object.assign({ 'Content-Type': 'application/json' }, h.headers), tags: { name: 'compare' } }), user);
     check(res, { 'compare 200': r => r.status === 200 });
-    const ext = http.get(`${BASE}/api/documents/${data.compareIds[0]}/extraction`, Object.assign({ tags: { name: 'extraction_view' } }, h));
+    const ext = authResult(http.get(`${BASE}/api/documents/${data.compareIds[0]}/extraction`, Object.assign({ tags: { name: 'extraction_view' } }, h)), user);
     check(ext, { 'extraction 200': r => r.status === 200 });
   } else {
     uploadAndWait(user, h);
@@ -166,20 +210,22 @@ function uploadAndWait(user, h) {
   const marker = `LOAD-${exec.vu.idInTest}-${exec.vu.iterationInScenario}-${Date.now()}`;
   const body = `Load test record ${marker}.\nCounterparty: Synthetic Partner d.o.o.\nAnnual value: EUR 12,500\nNotice period: 30 days\n`;
   const t0 = Date.now();
-  const res = http.post(`${BASE}/api/documents`, { file: http.file(body, `load-${user.tenant}-${marker}.txt`, 'text/plain'), groups: user.groups[0] },
-    Object.assign({ tags: { name: 'upload' } }, h));
+  const res = authResult(http.post(`${BASE}/api/documents`, { file: http.file(body, `load-${user.tenant}-${marker}.txt`, 'text/plain'), groups: user.groups[0] },
+    Object.assign({ tags: { name: 'upload' } }, h)), user);
   if (!check(res, { 'upload 202': r => r.status === 202 })) return;
   const jobId = res.json().job.id;
   for (let i = 0; i < 120; i++) {
     sleep(0.5);
-    const job = http.get(`${BASE}/api/jobs/${jobId}`, Object.assign({ tags: { name: 'job_status' } }, h)).json();
+    const polled = authResult(http.get(`${BASE}/api/jobs/${jobId}`, Object.assign({ tags: { name: 'job_status' } }, h)), user);
+    if (polled.status !== 200) continue;   // e.g. 503 under saturation: keep polling
+    const job = polled.json();
     if (['completed', 'failed', 'cancelled'].includes(job.status)) {
       jobsFailed.add(job.status !== 'completed');
       if (job.started_at && job.created_at) jobQueueWait.add(Date.parse(job.started_at) - Date.parse(job.created_at));
       if (job.started_at && job.finished_at) jobProcessing.add(Date.parse(job.finished_at) - Date.parse(job.started_at));
       jobEndToEnd.add(Date.now() - t0);
       if (job.status === 'completed') {   // keep the dataset stable: remove the synthetic document again
-        http.del(`${BASE}/api/documents/${res.json().id}`, null, Object.assign({ tags: { name: 'delete' } }, h));
+        authResult(http.del(`${BASE}/api/documents/${res.json().id}`, null, Object.assign({ tags: { name: 'delete' } }, h)), user);
       }
       return;
     }
@@ -228,7 +274,10 @@ export function handleSummary(data) {
       || Object.values(m.thresholds).every(t => t.ok)),
     http_reqs: pickMetric('http_reqs'), http_req_failed: pickMetric('http_req_failed'),
     http_req_duration: pickMetric('http_req_duration'), iterations: pickMetric('iterations'),
-    authz_violations: pickMetric('authz_violations') || { count: 0 }, checks: pickMetric('checks'),
+    authz_violations: pickMetric('authz_violations') || { count: 0 }, probe_errors: pickMetric('probe_errors') || { count: 0 },
+    token_errors: pickMetric('token_errors') || { count: 0 }, api_unauthorized: pickMetric('api_unauthorized') || { count: 0 },
+    api_unavailable: pickMetric('api_unavailable') || { count: 0 }, api_server_errors: pickMetric('api_server_errors') || { count: 0 },
+    checks: pickMetric('checks'),
     job_queue_wait_ms: pickMetric('job_queue_wait_ms'), job_processing_ms: pickMetric('job_processing_ms'),
     job_end_to_end_ms: pickMetric('job_end_to_end_ms'), jobs_failed: pickMetric('jobs_failed'),
     bff_login_ms: pickMetric('bff_login_ms'), by_endpoint: byName,

@@ -20,15 +20,24 @@ ROOT = Path(__file__).resolve().parents[1]
 K6_IMAGE = "grafana/k6:1.2.3"
 
 
+def project_containers(project: str) -> dict[str, str]:
+    """container name -> Compose service, for the containers of this Compose project only."""
+    out = subprocess.run(["docker", "ps", "--filter", f"label=com.docker.compose.project={project}", "--format",
+                          '{{.Names}}|{{.Label "com.docker.compose.service"}}'], capture_output=True, text=True).stdout
+    return dict(line.split("|", 1) for line in out.splitlines() if "|" in line)
+
+
 def docker_stats(project: str, samples: list, stop: threading.Event) -> None:
+    services = project_containers(project)
     while not stop.is_set():
-        out = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{json .}}"], capture_output=True,
-                             text=True, timeout=60).stdout
+        out = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{json .}}", *services],
+                             capture_output=True, text=True, timeout=60).stdout
         stamp = time.time()
         for line in out.splitlines():
             row = json.loads(line)
-            if row["Name"].startswith(project + "-"):
-                samples.append({"t": stamp, "name": row["Name"], "cpu": row["CPUPerc"], "mem": row["MemUsage"]})
+            if row["Name"] in services:
+                samples.append({"t": stamp, "name": services[row["Name"]], "cpu": row["CPUPerc"],
+                                "mem": row["MemUsage"]})
         stop.wait(5)
 
 
@@ -44,8 +53,7 @@ def _num(text: str) -> float:
 def summarize(samples: list) -> dict:
     out: dict[str, dict] = {}
     for s in samples:
-        service = s["name"].split("-")[-2] if s["name"].count("-") >= 2 else s["name"]
-        entry = out.setdefault(service, {"cpu": [], "mem_mib": []})
+        entry = out.setdefault(s["name"], {"cpu": [], "mem_mib": []})
         entry["cpu"].append(_num(s["cpu"]))
         entry["mem_mib"].append(_num(s["mem"].split("/")[0]))
     return {k: {"samples": len(v["cpu"]), "cpu_percent_max": round(max(v["cpu"]), 1),
@@ -58,8 +66,10 @@ def environment() -> dict:
                                      text=True).stdout or "{}")
     cpu = platform.processor()
     try:
-        if sys.platform == "win32":
-            cpu = subprocess.run(["wmic", "cpu", "get", "name"], capture_output=True, text=True).stdout.split("\n")[1].strip()
+        if sys.platform == "win32":  # wmic output uses \r\r\n line ends: drop blank lines first
+            out = subprocess.run(["wmic", "cpu", "get", "name"], capture_output=True, text=True).stdout
+            lines = [line.strip() for line in out.replace("\r", "").splitlines() if line.strip()]
+            cpu = lines[1] if len(lines) > 1 else cpu
     except Exception:  # noqa: BLE001
         pass
     return {"host_os": platform.platform(), "host_cpu": cpu, "docker_server": info.get("ServerVersion"),
