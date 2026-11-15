@@ -106,6 +106,9 @@ evaluation passes.
 | readiness 503, `object_storage: unavailable` | MinIO / S3 health, credentials | uploads answer 503 and store nothing; purge jobs retry |
 | `workers: none_active` | `docker compose ps worker`, worker logs | uploads still queue; start / scale workers |
 | queue backlog alert | `nexus_jobs_queue_depth`, oldest age | scale workers (`--scale worker=N`), check failures |
+| API answers 503 "busy", `NexusDatabasePoolExhausted` | `nexus_db_pool_timeouts_total`, `nexus_db_pool_connections`, CPU of the api container | saturation: requests are shed instead of queueing; scale API replicas or CPU, or raise `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` within PostgreSQL `max_connections` |
+| bearer requests 503 `idp_unavailable` | IdP health, `jwks_refresh_failed` log events | cached JWKS keys keep validating known kids for `OIDC_JWKS_STALE_MAX_SECONDS`; restore the IdP |
+| users get `user_temporarily_disabled` at the IdP | Keycloak events | brute-force quick-login lock (two logins of one account within 1 s, e.g. scripts sharing accounts); clears after 60 s; make clients reuse / refresh tokens |
 | auth failure spike | `nexus_auth_failures_total` by reason | `invalid_signature` / `unknown_key` after an IdP key change normally clears within `OIDC_JWKS_MIN_REFRESH_SECONDS`; sustained `invalid_credentials` = credential stuffing (rate-limit at the edge) |
 | user lost access unexpectedly | IdP groups; `users.groups` | groups sync at login / every `SESSION_REVALIDATE_SECONDS`; check the `/tenants/...` group paths |
 | leaked session suspected | — | IdP logout (back-channel ends local sessions) or revoke rows in `auth_sessions`; rotate `SESSION_ENCRYPTION_KEY` to invalidate stored refresh tokens |

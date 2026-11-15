@@ -54,6 +54,12 @@ groups:
         annotations:
           summary: Sustained authentication failures (credential stuffing or misconfiguration)
 
+      - alert: NexusDatabasePoolExhausted
+        expr: increase(nexus_db_pool_timeouts_total[5m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: Requests were shed with 503 because every database connection was busy (saturation)
+
       - alert: NexusObjectStorageErrors
         expr: sum(rate(nexus_object_storage_operations_total{outcome="error"}[5m])) > 0
         for: 5m

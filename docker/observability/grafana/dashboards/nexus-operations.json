@@ -519,7 +519,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - max(nexus_worker_last_heartbeat_timestamp_seconds)",
+          "expr": "time() - max(nexus_worker_last_heartbeat_timestamp_seconds > 0)",
           "legendFormat": "heartbeat age (s)",
           "refId": "B"
         }
@@ -598,7 +598,7 @@
             "uid": "prometheus"
           },
           "expr": "sum by (method, reason) (rate(nexus_auth_failures_total[5m])) * 60",
-          "legendFormat": "{{method}} {{reason}}",
+          "legendFormat": "{{method}} {{reason}} (per min)",
           "refId": "A"
         }
       ],

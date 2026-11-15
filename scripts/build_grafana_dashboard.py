@@ -67,12 +67,12 @@ panels = [
         q("sum by (error_code) (increase(nexus_job_retries_total[15m]))", "retry {{error_code}}")], 0, 40),
     panel(12, "Workers busy / last heartbeat age", [
         q("sum(nexus_worker_busy)", "busy workers"),
-        q("time() - max(nexus_worker_last_heartbeat_timestamp_seconds)", "heartbeat age (s)")], 12, 40),
+        q("time() - max(nexus_worker_last_heartbeat_timestamp_seconds > 0)", "heartbeat age (s)")], 12, 40),
     panel(13, "RAG answer latency p95 by answer mode", [q(
         "histogram_quantile(0.95, sum by (le, answer_mode) (rate(nexus_rag_answer_duration_seconds_bucket[5m])))",
         "{{answer_mode}}")], 0, 48, "s"),
     panel(14, "Authentication failures by reason", [q("sum by (method, reason) (rate(nexus_auth_failures_total[5m])) * 60",
-                                                      "{{method}} {{reason}}")], 12, 48),
+                                                      "{{method}} {{reason}} (per min)")], 12, 48),
     panel(15, "Object storage operations", [q("sum by (operation, outcome) (rate(nexus_object_storage_operations_total[5m]))",
                                               "{{operation}} {{outcome}}")], 0, 56, "ops"),
     panel(16, "Database pool connections", [q("sum by (engine, state) (nexus_db_pool_connections)", "{{engine}} {{state}}")],

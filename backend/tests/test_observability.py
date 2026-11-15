@@ -19,14 +19,15 @@ CANARY = "ZEBRA-CANARY-9931 confidential salary 777,777 EUR"
 
 # ----------------------------------------------------------------------------- redaction
 
+# Secret-SHAPED synthetic inputs (none is a real credential): each must be redacted.
 @pytest.mark.parametrize("raw, forbidden", [
     ("Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl", "eyJhbGciOiJSUzI1NiJ9"),
-    ("token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.abc", "eyJzdWIiOiJ1In0"),
+    ("token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.abc", "eyJzdWIiOiJ1In0"),  # gitleaks:allow (synthetic redaction input)
     ("login failed password=Hunter2!! for user", "Hunter2!!"),
     ('{"client_secret": "nexus-bff-secret"}', "nexus-bff-secret"),
-    ("refresh_token=8f1e2d3c4b5a69788796", "8f1e2d3c4b5a69788796"),
+    ("refresh_token=8f1e2d3c4b5a69788796", "8f1e2d3c4b5a69788796"),  # gitleaks:allow (synthetic redaction input)
     ("OPENAI key sk-proj-ABCDEFGHIJKLMNOP1234", "sk-proj-ABCDEFGHIJKLMNOP1234"),
-    ("aws AKIAABCDEFGHIJKLMNOP leaked", "AKIAABCDEFGHIJKLMNOP"),
+    ("aws AKIAABCDEFGHIJKLMNOP leaked", "AKIAABCDEFGHIJKLMNOP"),  # gitleaks:allow (synthetic redaction input)
     ("url ?X-Amz-Signature=deadbeef1234&X-Amz-Credential=AKIA", "deadbeef1234"),
 ])
 def test_secret_shapes_are_redacted(raw, forbidden):
@@ -189,6 +190,31 @@ def test_readiness_reports_unavailable_object_storage(scenario, monkeypatch):
                                                   s3_max_attempts=1, s3_connect_timeout=0.5))
     r = client.get("/api/health/ready")
     assert r.status_code == 503 and r.json()["checks"]["object_storage"] == "unavailable"
+
+
+def test_exhausted_connection_pool_is_shed_with_503_not_500(scenario):
+    """Found under the k6 stress profile: QueuePool checkout timeouts surfaced as HTTP 500."""
+    from backend.app.database import get_db
+    from backend.app.main import app
+    from backend.app.observability.metrics import DB_POOL_TIMEOUTS
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
+
+    client, token, _ = scenario
+    headers = token("finance@northstar.demo")
+
+    def exhausted_pool():
+        raise PoolTimeout("QueuePool limit of size 5 overflow 10 reached, connection timed out")
+        yield  # pragma: no cover - makes this a generator dependency like get_db
+    before = DB_POOL_TIMEOUTS._value.get()
+    previous = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = exhausted_pool
+    try:
+        r = client.get("/api/documents", headers=headers)
+    finally:
+        app.dependency_overrides[get_db] = previous
+    assert r.status_code == 503 and r.headers["retry-after"] == "2"
+    assert r.json() == {"detail": "The service is busy; please retry shortly."}  # no pool internals
+    assert DB_POOL_TIMEOUTS._value.get() == before + 1
 
 
 def test_api_answers_503_not_500_when_the_database_is_unreachable(scenario):
