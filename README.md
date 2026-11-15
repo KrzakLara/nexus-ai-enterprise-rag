@@ -8,7 +8,7 @@
 
 `Applied AI` · `FastAPI` · `React + TypeScript` · `SQLAlchemy + Alembic` · `PostgreSQL FTS + pgvector` · `SentenceTransformers` · `Docker` · `pytest`
 
-**Status:** v0.3.0 release candidate (Phases 1–3: MVP, advanced hybrid RAG, document intelligence). Four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector semantic, hybrid RRF) with query-aware verbatim answers and a dev-calibrated abstention policy, evaluated on 100 labeled questions. Document intelligence covers layout-aware parsing and OCR (PDF, scans, DOCX, XLSX, TXT, MD), contract and invoice extraction with verbatim evidence, validation, human review and multi-document comparison, evaluated on a frozen 32-document corpus. Zero measured authorization violations. This is a local demo and is not production-ready. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
+**Status:** v0.4.0 in development on `feat/phase4-enterprise-hardening` (Phases 1–4). Phase 4 adds OpenID Connect single sign-on with server-side sessions, PostgreSQL row-level security below the application ACL, durable background workers, private S3-compatible storage with a full document lifecycle, and structured logs, Prometheus metrics and OpenTelemetry traces ([docs/enterprise-hardening.md](docs/enterprise-hardening.md)). Phases 1–3: four permission-scoped retrieval modes (BM25, PostgreSQL FTS, pgvector, hybrid RRF) evaluated on 100 labeled questions, and document intelligence (OCR, extraction with verbatim evidence, validation, review, comparison) evaluated on a frozen 32-document corpus. Zero measured authorization violations. Hardened, but not certified or externally penetration-tested. MIT License (see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 </div>
 
@@ -167,25 +167,37 @@ The demo scenarios only read. `python scripts/docker_smoke.py` also checks the w
 
 ## Quick start (Docker, recommended)
 
-Prerequisites: Docker Desktop with Compose. From the repository root:
+Prerequisites: Docker Desktop with Compose v2 (about 8 GB of RAM for the full stack, 6 GB of disk
+for images and the model cache). From the repository root:
 
 ```bash
-docker compose up --build
+docker compose up --build                                                  # local demo (demo personas)
+docker compose -f compose.yaml -f compose.oidc.yaml up --build             # + Keycloak single sign-on
+docker compose -f compose.yaml -f compose.oidc.yaml -f compose.observability.yaml up --build   # + Prometheus / Grafana / Jaeger
 ```
 
-When the API container starts it runs:
+Services (Phase 4):
 
-1. `python scripts/migrate.py`: Alembic `upgrade head` (pgvector extension, embeddings table, FTS column + GIN index)
-2. `python scripts/seed_demo.py`: synthetic documents and users, then embeds any chunks that are missing vectors
-3. `uvicorn backend.app.main:app`. At startup the API loads the embedding model in a worker thread (`EMBEDDING_WARMUP=true`), so the first query does not pay the cold start. `/api/health` reports `embedding_model_loaded`. If loading fails, the API still starts and `semantic`/`hybrid` return HTTP 503.
+1. `db` PostgreSQL 16 + pgvector; `minio` private S3 storage + `minio-init` (bucket and a
+   bucket-scoped access key)
+2. `migrate` (one-shot, migration role): Alembic `upgrade head` (incl. row-level security),
+   LOGIN for the runtime roles, synthetic demo data stored in MinIO, embeddings
+3. `api` (FastAPI as the RLS runtime role `nexus_app`, cookie sessions, `PROCESSING_MODE=queue`) and
+   `worker` (`nexus_worker`, durable background jobs; scale with `--scale worker=2`)
+4. `frontend` (Vite dev server; `/api` is proxied on the same origin)
 
-The first start downloads the embedding model (~470 MB) into the `model_cache` volume. The API image is large (~2.8 GB, mostly PyTorch CPU and transformers). The frontend container runs the Vite **development** server (local demo); `npm run build` produces the production bundle.
+The first start downloads the embedding model (~470 MB) into the `hf_models` volume. All
+credentials in the Compose files are labelled local-only defaults; ports bind to 127.0.0.1;
+MinIO, the worker and metrics are not published. Production-oriented settings:
+[deploy/production.env.example](deploy/production.env.example) (the services refuse to start with
+demo authentication or other unsafe settings when `APP_ENV=production`).
 
-- **App:** http://localhost:5173. The retrieval selector under the chat input offers *BM25 (baseline)*, *Keyword · PostgreSQL FTS*, *Semantic · pgvector* and *Hybrid · RRF* (the default on PostgreSQL).
-- **API docs:** http://localhost:8000/docs
-- **Health:** http://localhost:8000/api/health (lists the available `retrieval_modes`)
+- **App:** http://localhost:5173 · **API docs:** http://localhost:8000/docs
+- **Health:** `/api/health` (capabilities), `/api/health/live`, `/api/health/ready` (component states)
+- **SSO (OIDC overlay):** "Sign in with SSO" → Keycloak (http://localhost:8080, synthetic users below)
+- **Observability overlay:** Grafana http://localhost:3001, Prometheus http://localhost:9090, Jaeger http://localhost:16686
 
-**Demo password:** `DemoPass123!`
+**Demo password (demo personas and Keycloak users):** `DemoPass123!` (local only)
 
 | User | Demonstrates |
 | --- | --- |

@@ -174,11 +174,31 @@ A `Source` contains `document_id`, `chunk_id`, `page`, `excerpt` (the first 800 
 
 Text-only PDFs preserve page numbers. DOCX and TXT are treated as a single logical page in v0.1; exact Word pagination is not reconstructed. Scanned PDF OCR, page bounding boxes, merged cells and spreadsheet tables are future work.
 
-## ADR-004: Local demo authentication is not enterprise SSO
+## ADR-004: Local demo authentication is not enterprise SSO (superseded in Phase 4 by ADR-014)
 
-The seed script creates five synthetic users. They log in with a shared demo password and short-lived HS256 JWTs. Only a local network is in scope; Docker binds exposed services to `127.0.0.1`. This is **NOT** production authentication, and **must not be publicly deployed**.
+The seed script creates synthetic users that log in with a shared demo password. Since Phase 4 this
+is `AUTH_MODE=demo`, allowed only in local / development / test environments and refused
+elsewhere at startup.
 
-Planned production auth: OIDC Authorization Code + PKCE; validate issuer, audience, signature and session expiry; trusted server-side group mappings; break-glass policies; secret rotation; rate limiting; tenant-scoped RLS where appropriate.
+## ADR-014: OIDC through a backend-for-frontend (Phase 4)
+
+OpenID Connect Authorization Code + PKCE is handled by the API; the browser holds only an HttpOnly
+session cookie. Tokens are validated strictly (asymmetric allowlist, JWKS rotation, iss / aud /
+azp / nonce / time claims) and tenant authority comes from IdP group paths under a server-side
+tenant allowlist, bound once per identity. Details: [authentication-oidc.md](authentication-oidc.md).
+
+## ADR-015: Row-level security as a second enforcement of the ACL (Phase 4)
+
+The application ACL stays in every query; PostgreSQL RLS (FORCE) enforces the same rule for the
+runtime roles `nexus_app` / `nexus_worker`, with a transaction-local security context and a worker
+job scope. Details: [postgresql-rls.md](postgresql-rls.md).
+
+## ADR-016: Durable jobs in PostgreSQL, originals in S3 (Phase 4)
+
+Heavy processing moved to background workers behind a PostgreSQL queue (job row in the same
+transaction as the upload: no outbox relay), originals moved to S3-compatible storage with a staged
+deletion lifecycle. Details: [background-processing.md](background-processing.md),
+[object-storage-lifecycle.md](object-storage-lifecycle.md).
 
 ## Threat model and negative tests
 
@@ -240,7 +260,7 @@ flowchart TD
 1. **v0.2d (done):** query-aware extractive answers, sentence-level evidence policy, embedder comparison (e5-small kept). Deferred: query translation / expansion, LLM answer evaluation, chunk-size ablation.
 1. **v0.2.0 (release):** PDF/DOCX and upload tests, complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid default on PostgreSQL.
 2. **v0.3 — document AI (implemented on the Phase 3 branch, not released):** layout-aware parsing, Tesseract OCR with deskew + table lattice, Pydantic schema extraction (rules + optional LLM), grounding, validation, human review, multi-document comparison, a 32-document evaluation with CI gates. Not done: layout-aware chunking (chunks still come from page text), Docling.
-3. **v0.4 — governance:** OIDC, Postgres RLS, signed document links, async jobs, per-tenant observability, source deletion and permission-change reindexing.
+3. **v0.4 — enterprise hardening (implemented on the Phase 4 branch, stacked on v0.3):** OIDC (BFF, Keycloak locally), PostgreSQL RLS, durable workers, S3 storage with versions / deletion / retention, presigned links, structured logs / metrics / traces, security, resilience and load testing ([enterprise-hardening.md](enterprise-hardening.md)). Not done: ANN indexes, reranking, per-tenant cost dashboards, HA / multi-region.
 4. **v1.0 — engineering evidence:** retrieval and answer eval suite, injection tests, load benchmarks, latency/cost dashboards, threat model and demo video.
 
 ## What to measure
