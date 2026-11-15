@@ -30,5 +30,13 @@ Merge order for later (not done here): Phase 3 branch into `main` first, then th
 |---|---|---|---|
 | 1 | Baseline audit, branch | done | table above |
 | 2-6 | Config / OIDC / RLS / jobs / storage core | done (`0e14632`) | 357 existing tests pass with RLS-enforced runtime roles |
+| 7-10 | Tests, frontend, Docker, observability configs, drills, CI | done (`a121a30`) | full Windows run (PostgreSQL + MinIO + real Keycloak): 545 passed, 3 failed (timing-flaky retry tests, fixed: deterministic back-off; DB-clock scheduling), 5 skipped (Tesseract absent on Windows, PostgreSQL-only tests on SQLite); affected files re-run: 157 passed |
+| 11-13 | Docker E2E, drills, load tests, benchmarks, Linux full run, evaluation gates, docs | in progress | see enterprise-hardening.md |
 
-(continued in later commits)
+## Incidents during the run (for the record)
+
+* Docker Desktop's engine stopped responding once (API 500, all published ports down). Docker
+  Desktop was restarted; no volume was touched. Disposable test containers were restarted.
+* A stopped background pytest run left its Python process alive and ran concurrently with the next
+  run on the same database: cross-process lock waits. Both processes were killed; the test session
+  now takes a PostgreSQL advisory lock and refuses to run concurrently.

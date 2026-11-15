@@ -134,7 +134,7 @@ Grounding is **exact or normalized string matching** of the value inside the cit
 - `POST /api/documents/{id}/process` retries. `reparse=true` parses the stored original again.
 - Re-processing is **idempotent**: there is one extraction per document (unique constraint), fields are replaced and the version increases.
 - Approved or rejected extractions are locked unless `force=true`, and a forced re-process is recorded in the history.
-- CPU-heavy work runs in FastAPI's worker threadpool (sync routes), so the event loop stays responsive (measured in Phase 2). There is no queue or worker: OCR is about 3.6 s per scanned document on the dev machine.
+- Since Phase 4, parsing, OCR, extraction and embedding run as durable background jobs (`ingest`, `reprocess`, `reindex`) executed by workers ([background-processing.md](background-processing.md)); in `PROCESSING_MODE=inline` (tests, evaluation, SQLite demo) the same job code runs inside the request and the v0.3 responses are unchanged. Job status and stages are shown in the UI. Measured OCR cost: [performance-benchmarks.md](performance-benchmarks.md).
 - Logs contain IDs, actions and error types, **never document text**.
 
 ## API
