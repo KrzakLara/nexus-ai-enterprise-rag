@@ -53,12 +53,28 @@ def docker(*args):
     return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=120)
 
 
+_TOKENS: dict[str, tuple[dict, float]] = {}
+
+
 def token(email):
-    r = httpx.post(f"{ARGS.keycloak}/realms/nexus/protocol/openid-connect/token", data={
-        "grant_type": "password", "client_id": "nexus-loadtest", "client_secret": "nexus-loadtest-local-dev-secret",
-        "username": email, "password": "DemoPass123!", "scope": "openid"}, timeout=20)
+    """Bearer headers for a synthetic realm user, reused while valid for at least another minute.
+    Logging the same account in twice within a second trips Keycloak's brute-force quick-login
+    check (temporary lockout), so the drill never logs in back to back."""
+    cached = _TOKENS.get(email)
+    if cached and cached[1] - time.time() > 60:
+        return cached[0]
+    for attempt in range(5):
+        r = httpx.post(f"{ARGS.keycloak}/realms/nexus/protocol/openid-connect/token", data={
+            "grant_type": "password", "client_id": "nexus-loadtest", "client_secret": "nexus-loadtest-local-dev-secret",
+            "username": email, "password": "DemoPass123!", "scope": "openid"}, timeout=20)
+        if r.status_code == 200:
+            break
+        time.sleep(5 * (attempt + 1))
     r.raise_for_status()
-    return {"Authorization": "Bearer " + r.json()["access_token"]}
+    body = r.json()
+    headers = {"Authorization": "Bearer " + body["access_token"]}
+    _TOKENS[email] = (headers, time.time() + body["expires_in"])
+    return headers
 
 
 def api(method, path, headers, **kw):
