@@ -7,6 +7,7 @@ import {
   RefreshCw, RotateCcw, ScanText, Search, Send, Settings2, Shield, ShieldCheck, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
 import { DocIntelWorkspace } from './DocIntel';
+import { tenantDisplayName, tenantShortName } from './tenant';
 import {
   api, auth, ACTIVE_JOB, ANSWER_MODE_LABELS, ApiError, isInFlight, RETRIEVAL_LABELS, STAGE_LABELS,
   type Answer, type AuditEvent, type AuthConfig, type Document, type DocumentDetail, type EvaluationSummary,
@@ -195,7 +196,7 @@ function App() {
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 5000); return () => window.clearTimeout(timer); }, [notice]);
 
   const persona = DEMO_USERS.find(p => p.email === user?.email);
-  const tenantName = user?.tenant === 'northstar' ? 'Northstar Inc.' : 'Otherco Ltd.';
+  const tenantName = tenantDisplayName(user?.tenant);
   const filteredDocs = useMemo(() => docs.filter(doc =>
     `${doc.title} ${doc.filename} ${doc.groups.join(' ')}`.toLowerCase().includes(searchTerm.toLowerCase())),
     [docs, searchTerm]);
@@ -265,7 +266,7 @@ function App() {
       </div>
     </aside>
     <main className="main-pane">
-      <header className="topbar"><div className="breadcrumbs">{tenantName.split(' ')[0]} / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
+      <header className="topbar"><div className="breadcrumbs">{tenantShortName(user.tenant)} / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
         <div className="topbar-right"><span className="environment"><span className="small-pulse" />{config?.auth_mode === 'oidc' ? 'SSO' : 'Demo environment'}</span><span className="topbar-separator" /><span className={`avatar tiny ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span></div></header>
       {section === 'assistant' && <div className="assistant-layout">
         <div className="assistant-main">
