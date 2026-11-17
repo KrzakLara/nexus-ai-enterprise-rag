@@ -100,15 +100,16 @@ Detailed component and data-flow description, ADRs and trade-offs: [docs/archite
 
 ## Demonstration
 
-[![NEXUS AI product demo (2:21): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
+[![NEXUS AI product demo (2:25): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
 
-**[▶ Watch the 2:21 demo video (MP4, 1080p)](docs/videos/nexus-ai-demo.mp4)**: a real, automated browser
-recording of the local Docker stack with synthetic data. A reviewer signs in through Keycloak SSO,
-uploads a Croatian invoice that a background worker parses and extracts with evidence, approves it,
-and sees business validation block a scanned (OCR) invoice. A Croatian question then finds the new
-invoice with hybrid search and verbatim citations, another tenant's data stays invisible to both the
-Northstar and the Otherco user, and the evaluation page and Grafana close the tour. Waiting time is
-removed with visible cuts; nothing is mocked. Reproduce it with [`scripts/demo_video/`](scripts/demo_video/).
+**[▶ Watch the 2:25 demo video (MP4, 1080p, English)](docs/videos/nexus-ai-demo.mp4)**: a real, automated
+browser recording of the local Docker stack with synthetic English documents. A reviewer signs in
+through Keycloak SSO and uploads two invoices: a text PDF that a background worker parses and extracts
+with evidence, and a scanned one that needs OCR. The reviewer approves the first; business validation
+blocks the second because its total does not add up. An English question then finds the new invoice
+with hybrid search and an extractive, source-grounded answer with verbatim citations. Another tenant's
+data stays invisible to both the Northstar and the Otherco user, and the evaluation page and Grafana
+close the tour. Waiting time is removed with visible cuts; nothing is mocked. Reproduce it with [`scripts/demo_video/`](scripts/demo_video/).
 
 Real screenshots from the local Docker stack (Keycloak SSO, queue mode, MinIO, synthetic data),
 captured with a headless browser on 2026-11-15 and 2026-11-17.

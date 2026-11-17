@@ -1,0 +1,48 @@
+[
+  {
+    "file": "Brightline Systems Invoice BLS-2026-0417.pdf",
+    "format": "pdf",
+    "language": "en",
+    "expected_fields": {
+      "invoice_number": "BLS-2026-0417",
+      "supplier_name": "Brightline Systems Ltd",
+      "supplier_tax_id": "GB314271828",
+      "customer_name": "Northstar Manufacturing Ltd",
+      "invoice_date": "2026-11-02",
+      "due_date": "2026-12-02",
+      "currency": "EUR",
+      "subtotal": "3560.00",
+      "tax_amount": "712.00",
+      "total_amount": "4272.00",
+      "payment_reference": "NS-PO-8120",
+      "iban": "GB47BARC20035345123456"
+    },
+    "expected_errors": [],
+    "sha256": "907fdeb369f5a2b643811e75905b9a66fb109277a01a371b25d3cfbe787ab1ef",
+    "notes": ""
+  },
+  {
+    "file": "Harbor Facility Services Invoice HFS-2026-0388 - scanned.pdf",
+    "format": "scan",
+    "language": "en",
+    "expected_fields": {
+      "invoice_number": "HFS-2026-0388",
+      "supplier_name": "Harbor Facility Services Ltd",
+      "supplier_tax_id": "GB271828182",
+      "customer_name": "Northstar Manufacturing Ltd",
+      "invoice_date": "2026-10-20",
+      "due_date": "2026-11-19",
+      "currency": "EUR",
+      "subtotal": "1356.50",
+      "tax_amount": "271.30",
+      "total_amount": "1702.80",
+      "payment_reference": "NS-PO-8094",
+      "iban": "GB63LOYD30961700709248"
+    },
+    "expected_errors": [
+      "total_mismatch"
+    ],
+    "sha256": "e396df30a35a10d32972930af7e633b296a7a107c02cbaab0e9556e6a17acb86",
+    "notes": "scanned; printed total is 75.00 higher than subtotal + VAT"
+  }
+]

@@ -22,8 +22,14 @@ const APP = process.env.APP_URL ?? 'http://localhost:5173';
 const GRAFANA = process.env.GRAFANA_URL ?? 'http://localhost:3001';
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'DemoPass123!';
 const GRAFANA_AUTH = 'Basic ' + Buffer.from(`${process.env.GRAFANA_ADMIN ?? 'grafana-local-admin'}:${process.env.GRAFANA_ADMIN_PASSWORD ?? 'grafana-local-admin-secret'}`).toString('base64');
-const UPLOAD_FILE = path.join(REPO, 'eval', 'docintel', 'documents', 'di-i02.pdf');
-const RAG_QUESTION = 'Servis Plus R-2026-0153: datum dospijeća i ukupno za platiti';
+// English demo fixtures (scripts/demo_video/make_demo_fixtures.py); the frozen eval corpus is not used.
+const FIXTURES = path.join(REPO, 'demo_documents', 'video');
+const INVOICE = 'Brightline Systems Invoice BLS-2026-0417.pdf';
+const SCANNED = 'Harbor Facility Services Invoice HFS-2026-0388 - scanned.pdf';
+// Questions verified against the running stack before recording (see README in this folder).
+const RAG_QUESTION = 'What is the total due on the Brightline Systems invoice?';
+const CONTRACT_QUESTION = '99.9% availability and Atlas notice period';
+const OTHER_TENANT_ID_QUESTION = 'What is the SILVER-IBIS-73 capex forecast?';
 const VIEW = { width: 1440, height: 810 };   // CSS pixels; scale 4/3 => 1920x1080 frames
 const SCALE = 4 / 3;
 
@@ -147,6 +153,39 @@ async function logout(page) {
   mark('logged_out');
 }
 
+async function uploadDocument(page, filename, name) {
+  if (!(await page.locator('.upload-modal').count())) {
+    await click(page, page.getByRole('button', { name: /Upload document/ }));
+    await page.locator('.upload-modal').waitFor();
+    await sleep(700);
+  }
+  mark(`${name}_modal`);
+  const chooser = page.waitForEvent('filechooser');
+  await click(page, page.locator('.drop-zone'));
+  await (await chooser).setFiles(path.join(FIXTURES, filename));
+  await sleep(700);
+  const groupBox = g => page.locator('.access-group-list label').filter({ hasText: new RegExp(`^${g}$`) }).locator('input');
+  if (!(await groupBox('finance').isChecked())) await click(page, groupBox('finance'));
+  if (await groupBox('procurement').isChecked()) await click(page, groupBox('procurement'));
+  await sleep(500);
+  await click(page, page.locator('.upload-modal button[type=submit]'));
+  mark(`${name}_submitted`);
+  await page.locator('.doc-table tbody tr').filter({ hasText: filename }).first().waitFor();
+  await sleep(400);
+  mark(`${name}_row_visible`);
+}
+
+async function ask(page, question, name) {
+  const before = await page.locator('.answer-content').count();
+  await type(page, page.locator('.chat-input-wrap input'), question, 32);
+  await sleep(400);
+  await click(page, page.locator('.chat-input-wrap button[type=submit]'));
+  mark(`${name}_asked`);
+  await page.waitForFunction(n => document.querySelectorAll('.answer-content').length > n, before, { timeout: 60000 });
+  await sleep(600);
+  mark(`${name}_answer`);
+}
+
 async function main() {
   const browser = await chromium.launch({ args: ['--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none'] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE, locale: 'en-US', timezoneId: 'Europe/Zagreb', colorScheme: 'light' });
@@ -165,28 +204,22 @@ async function main() {
   await click(page, page.getByRole('button', { name: /Document Library/ }));
   await sleep(1800);
   mark('library');
-  await click(page, page.getByRole('button', { name: /Upload document/ }));
-  await page.locator('.upload-modal').waitFor();
-  await sleep(700);
-  mark('upload_modal');
-  const chooser = page.waitForEvent('filechooser');
-  await click(page, page.locator('.drop-zone'));
-  await (await chooser).setFiles(UPLOAD_FILE);
-  await sleep(700);
-  const groupBox = name => page.locator('.access-group-list label').filter({ hasText: new RegExp(`^${name}$`) }).locator('input');
-  if (!(await groupBox('finance').isChecked())) await click(page, groupBox('finance'));
-  if (await groupBox('procurement').isChecked()) await click(page, groupBox('procurement'));
-  await sleep(500);
-  await click(page, page.locator('.upload-modal button[type=submit]'));
-  mark('upload_submitted');
-  const row = page.locator('.doc-table tbody tr').filter({ hasText: 'di-i02.pdf' }).first();
-  await row.waitFor();
-  await sleep(400);
-  mark('upload_row_visible');
+  await uploadDocument(page, INVOICE, 'upload');
+  const row = page.locator('.doc-table tbody tr').filter({ hasText: INVOICE }).first();
   await row.locator('.proc-badge.ready').waitFor({ timeout: 180000 });
   mark('upload_ready');
   await hover(page, row.locator('.proc-badge').first());
   await sleep(2600);
+  // second upload: a scanned invoice (image-only PDF, needs OCR)
+  await click(page, page.getByRole('button', { name: /Upload document/ }));
+  await page.locator('.upload-modal').waitFor();
+  await sleep(300);
+  await uploadDocument(page, SCANNED, 'scan_upload');
+  const scanLibRow = page.locator('.doc-table tbody tr').filter({ hasText: SCANNED }).first();
+  await scanLibRow.locator('.proc-badge.ready').waitFor({ timeout: 180000 });
+  mark('scan_ready');
+  await hover(page, scanLibRow.locator('.proc-badge').first());
+  await sleep(2000);
 
   // ---- 3. Lifecycle panel (real job history)
   await click(page, row.locator('.file-item'));
@@ -204,7 +237,7 @@ async function main() {
   await page.locator('.di-table tbody tr').first().waitFor();
   await sleep(1500);
   mark('di_library');
-  const diRow = page.locator('.di-table tbody tr').filter({ hasText: 'di-i02.pdf' }).first();
+  const diRow = page.locator('.di-table tbody tr').filter({ hasText: INVOICE }).first();
   await click(page, diRow.locator('button.link-button'));
   await page.locator('.di-fields').first().waitFor();
   await sleep(1500);
@@ -227,7 +260,7 @@ async function main() {
   await click(page, page.locator('button.di-back'));
   await page.locator('.di-table tbody tr').first().waitFor();
   await sleep(900);
-  const scanRow = page.locator('.di-table tbody tr').filter({ hasText: 'di-i07' }).first();
+  const scanRow = page.locator('.di-table tbody tr').filter({ hasText: SCANNED }).first();
   await click(page, scanRow.locator('button.link-button'));
   await page.locator('.di-page-head').first().waitFor();
   await sleep(1600);
@@ -243,46 +276,32 @@ async function main() {
   await hover(page, page.locator('.di-blocked strong'), 500);
   await sleep(3200);
 
-  // ---- 6. Hybrid RAG with citations about the uploaded invoice
+  // ---- 6. Hybrid RAG with citations about the uploaded invoice (questions are typed, in English)
   await click(page, page.getByRole('button', { name: /AI Assistant/ }));
   await page.locator('.chat-input-wrap input').waitFor();
   await sleep(1200);
   mark('assistant');
   await page.locator('select[aria-label="Retrieval mode"]').selectOption('hybrid');
-  await type(page, page.locator('.chat-input-wrap input'), RAG_QUESTION, 32);
-  await sleep(400);
-  await click(page, page.locator('.chat-input-wrap button[type=submit]'));
-  mark('rag_asked');
-  await page.locator('.answer-content').last().waitFor({ timeout: 60000 });
-  await sleep(600);
-  mark('rag_answer');
+  await ask(page, RAG_QUESTION, 'rag');
   await sleep(1500);
   await hover(page, page.locator('.evidence-card').first(), 700);
   await sleep(2600);
 
-  // Multi-document hybrid question (guided prompt 3): verbatim quotes from several contracts
-  await click(page, page.getByRole('button', { name: /New chat/ }));
-  await sleep(900);
-  await click(page, page.locator('.prompts-grid button').filter({ hasText: '3 ·' }));
-  mark('fusion_asked');
-  await page.locator('.answer-content').last().waitFor({ timeout: 60000 });
-  await sleep(600);
-  mark('fusion_answer');
+  // Multi-document hybrid query across contracts (same conversation, so no prompt cards are shown)
+  await ask(page, CONTRACT_QUESTION, 'fusion');
   await sleep(1800);
   await hover(page, page.locator('.evidence-card').nth(1), 700);
   await sleep(2200);
   await hover(page, page.locator('.answer-metadata').last(), 700);
   await sleep(2000);
 
-  // ---- 7. Same tenant, another tenant's identifier: nothing is returned
-  await click(page, page.getByRole('button', { name: /New chat/ }));
+  // ---- 7. Same tenant, another tenant's identifier: nothing is returned.
+  // Reload = fresh conversation (the SSO session cookie stays), so the source inspector starts empty.
+  await page.reload();
+  await page.locator('.chat-input-wrap input').waitFor();
+  await startScreencast(page);
   await sleep(1000);
-  const blocked = page.locator('.prompts-grid button').filter({ hasText: '7 ·' });
-  await click(page, blocked);
-  mark('blocked_asked');
-  await page.locator('.answer-content').last().waitFor({ timeout: 60000 });
-  await sleep(500);
-  mark('blocked_answer');
+  await ask(page, OTHER_TENANT_ID_QUESTION, 'blocked');
   await hover(page, page.locator('.answer-metadata .mini-badge').last(), 700);
   await sleep(3000);
 
@@ -298,7 +317,7 @@ async function main() {
   await page.locator('.chat-input-wrap input').waitFor();
   await sleep(600);
   await page.locator('select[aria-label="Retrieval mode"]').selectOption('hybrid');
-  await type(page, page.locator('.chat-input-wrap input'), 'What is the total of invoice R-2026-0153 from Servis Plus?', 32);
+  await type(page, page.locator('.chat-input-wrap input'), RAG_QUESTION, 32);
   await click(page, page.locator('.chat-input-wrap button[type=submit]'));
   mark('otherco_asked');
   await page.locator('.answer-content').last().waitFor({ timeout: 60000 });
