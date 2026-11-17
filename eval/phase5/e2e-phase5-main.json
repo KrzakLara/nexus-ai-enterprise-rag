@@ -1,0 +1,123 @@
+{
+  "generated_at": "2026-11-17T12:14:20Z",
+  "checks": 22,
+  "passed": 22,
+  "failed": 0,
+  "timings": {
+    "oidc_login_s": 9.738,
+    "upload_accept_ms": 2112.9,
+    "ingest_job_s": 2.07
+  },
+  "results": [
+    {
+      "check": "1 OIDC login via Keycloak (PKCE, BFF cookie session)",
+      "ok": true,
+      "detail": "finance@northstar.demo tenant=northstar groups=['finance', 'legal']"
+    },
+    {
+      "check": "1 identity mapped to tenant + groups from the IdP",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "1 no token in the browser-visible session payload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "2 upload accepted asynchronously (202 + durable job)",
+      "ok": true,
+      "detail": "{\"id\":\"0010b311-abef-4543-9ff1-92fee2729d4b\",\"title\":\"e2e-5e16463f\",\"lifecycle_state\":\"uploaded\",\"duplicate_of\":null,\"job\":{\"id\":\"ffb7dd88-d5d9-4109-8e83-6655eacadc13\",\"type\":\"ingest\",\"status\":\"queued"
+    },
+    {
+      "check": "2 original stored in private MinIO bucket under a server-generated key",
+      "ok": true,
+      "detail": "{\"size\": 1136, \"sha256\": \"489881071f3a88f2e543411db17fad921b2f70f66efec25c241f3ae724d29c5b\"}"
+    },
+    {
+      "check": "2 anonymous object access refused (private bucket)",
+      "ok": true,
+      "detail": "403"
+    },
+    {
+      "check": "3 worker completed ingest (parse, extract, embed)",
+      "ok": true,
+      "detail": "attempts=1 result={'checkpoint': 'done', 'pages': 2, 'chunks': 2, 'chunks_replaced': True, 'ocr_pages': [], 'format': 'pdf', 'extraction': 'needs_review', 'embedding_status': 'embedded:2', 'embedded_now': 2, 'version': 1}"
+    },
+    {
+      "check": "3 document searchable via hybrid RAG with a verbatim citation",
+      "ok": true,
+      "detail": "extractive"
+    },
+    {
+      "check": "4 reviewer (OIDC role mapping) approved the extraction",
+      "ok": true,
+      "detail": "{\"id\":\"c56fbf74-e82b-4931-bdb7-bec63716f472\",\"document_id\":\"0010b311-abef-4543-9ff1-92fee2729d4b\",\"doc_type\":\"contract\",\"schema_version\":\"1\",\"provider\":\"rules_v1\",\"status\":\"approved\",\"version\":2,\"issu"
+    },
+    {
+      "check": "5 runtime role without security context sees no rows",
+      "ok": true,
+      "detail": "0\n"
+    },
+    {
+      "check": "5 RLS hides the document and its chunks from a same-tenant user without the grant",
+      "ok": true,
+      "detail": "BEGIN northstar|f4c39f0e-2eb2-58f4-88ca-89014bb8dc2a visible=0 chunks=0 COMMIT "
+    },
+    {
+      "check": "6 hr@northstar.demo cannot read or retrieve the document",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "6 finance@otherco.demo cannot read or retrieve the document",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "7 API metrics: request, retrieval and queue gauges",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "7 worker metrics: job duration, stages, OCR/ingestion",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "7 structured worker log line for the job (JSON, no document text)",
+      "ok": true,
+      "detail": "id\": \"0010b311-abef-4543-9ff1-92fee2729d4b\", \"attempt\": 1, \"fields\": {\"event\": \"job_finished\", \"status\": \"completed\", \"error_code\": null, \"duration_ms\": 336.0}}"
+    },
+    {
+      "check": "7 one trace spans the API request and the worker (context crossed the queue)",
+      "ok": true,
+      "detail": "trace 1c901d4701f1d9e6: 11 spans, ['nexus-api', 'nexus-worker']"
+    },
+    {
+      "check": "8 re-index job completed",
+      "ok": true,
+      "detail": "{\"embedding_status\": \"embedded:2\", \"embedded_now\": 2, \"removed\": 2}"
+    },
+    {
+      "check": "8 deleted document immediately absent from retrieval and reads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "8 purge job removed the object and derived data",
+      "ok": true,
+      "detail": "{\"removed_rows\": {\"chunk_embeddings\": 2, \"extraction_fields\": 7, \"review_events\": 2, \"chunks\": 2, \"document_tables\": 0, \"document_processing\": 1, \"extractions\": 1, \"document_grants\": 1}, \"objects_deleted\": 1, \"reason\": \"user_delete\"}"
+    },
+    {
+      "check": "9 RP-initiated logout URL returned, local session revoked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "9 back-channel logout from Keycloak ended the BFF session",
+      "ok": true,
+      "detail": "{\"detail\":{\"code\":\"session_revoked\",\"message\":\"Your session was ended; please sign in again\"}}"
+    }
+  ]
+}

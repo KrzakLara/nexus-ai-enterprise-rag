@@ -1,12 +1,123 @@
 # Architecture and design decisions
 
-**Current release:** v0.3.0 release candidate (Phases 1–3: MVP, advanced hybrid RAG, document intelligence: layout-aware parsing, OCR, structured extraction, validation, human review, multi-document analysis; see ADR-013). This is a runnable **vertical slice** with permission-scoped BM25, PostgreSQL full-text, pgvector semantic and hybrid (RRF) retrieval, query-aware verbatim answers and a dev-calibrated abstention policy, and it is not a production-ready system.
+**Current version:** v0.4.0 on `main` (Phases 1–4: MVP, hybrid RAG, document intelligence, enterprise hardening). A portfolio-grade system with synthetic data; hardened and tested, not certified or operated in production.
+
+This document starts with the **current (v0.4.0) system**: components, data flows and the main trade-offs, verified against the source code and the Compose files. The ADRs below record each decision at the phase it was made; a few early ADRs describe limitations that later phases removed (marked as superseded).
+
+## System overview (v0.4.0)
+
+```mermaid
+flowchart TB
+  subgraph Client
+    SPA["React 19 + TypeScript SPA<br/>(frontend/src)"]
+  end
+  subgraph Edge["Frontend container"]
+    VITE["Vite server<br/>same-origin /api proxy"]
+  end
+  subgraph Identity
+    KC["Keycloak 26 (OIDC)<br/>realm nexus · groups → tenant / groups / roles"]
+  end
+  subgraph App["FastAPI modular monolith (one backend image)"]
+    BFF["identity/ · BFF<br/>code + PKCE, sessions, CSRF, JWT/JWKS"]
+    ACL["security.authorized_documents<br/>tenant ∧ (admin ∨ owner ∨ group grant)"]
+    UP["uploads.py · lifecycle_api.py<br/>validation, versions, deletion"]
+    RET["retrieval.py · fusion.py<br/>FTS · pgvector · BM25 · RRF"]
+    EVI["evidence.py · extractive.py · rag.py<br/>abstention · verbatim quotes · citations"]
+    DI["docintel_api.py · docintel/review.py<br/>extraction view, review, compare"]
+    OBS["observability/<br/>JSON logs · metrics :9100 · OTel"]
+  end
+  subgraph Workers["Worker process(es): python -m backend.app.worker"]
+    JOB["jobs/runner.py · handlers.py<br/>ingest · reprocess · reindex · purge"]
+    PIPE["docintel/: parsing → OCR → structure →<br/>classify → rules / LLM → grounding → validation"]
+    EMB["embeddings.py · indexing.py<br/>multilingual-e5-small (CPU)"]
+  end
+  PG[("PostgreSQL 16 + pgvector<br/>FORCE RLS on 15 tables<br/>chunks · embeddings · tsvector/GIN<br/>processing_jobs · extractions · audit")]
+  S3[("MinIO / S3<br/>private bucket")]
+  PROM[Prometheus] --> GRAF[Grafana]
+  JAE[Jaeger]
+  OAI["OpenAI API<br/>(optional, off by default)"]
+
+  SPA --> VITE --> BFF
+  SPA -.->|login redirect| KC
+  BFF <--> KC
+  BFF --> ACL
+  ACL --> RET --> EVI
+  ACL --> DI
+  UP -->|"original"| S3
+  UP -->|"document + job row,<br/>same transaction"| PG
+  RET -->|"ACL inside each statement<br/>+ RLS (role nexus_app)"| PG
+  DI --> PG
+  EVI -.->|"authorized excerpts only"| OAI
+  JOB -->|"claim · SKIP LOCKED · lease + fencing<br/>RLS job scope (role nexus_worker)"| PG
+  JOB -->|"GET + verify SHA-256"| S3
+  JOB --> PIPE --> EMB --> PG
+  OBS -->|scrape| PROM
+  OBS -->|"OTLP http :4318"| JAE
+  GRAF -.->|datasource| JAE
+```
+
+Notes on the diagram (verified in code and configuration):
+
+- **One backend image** runs three roles: `migrate` (one-shot: Alembic, runtime-role logins, demo seed), `api` (uvicorn, DB role `nexus_app`) and `worker` (DB role `nexus_worker`, scalable with `--scale worker=N`). See `compose.yaml`.
+- The **embedding model is loaded in both** the API (query embeddings for semantic / hybrid search, warm-up at start) and the worker (chunk embeddings during ingest and re-index).
+- **OCR, extraction and embedding run in the worker** in queue mode (`PROCESSING_MODE=queue`, the Compose default). In inline mode (tests, evaluation harnesses, SQLite demo) the same handler code runs inside the request.
+- **Metrics:** API and every worker expose Prometheus metrics on internal port 9100 (not published). **Traces:** OTLP to Jaeger; the trace context travels with the job, so one trace spans the API request and the worker (`eval/phase5/e2e-phase5-main.json`, step 7). Grafana has Prometheus and Jaeger datasources and a provisioned dashboard.
+- The **OpenAI API** is called only when `OPENAI_API_KEY` is set; without it, answers are verbatim extractive quotes. The optional LLM extraction provider is configured separately (`docintel/llm.py`).
+
+### Data flow: ingestion (queue mode)
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant A as API (nexus_app)
+  participant S as MinIO / S3
+  participant P as PostgreSQL
+  participant W as Worker (nexus_worker)
+  B->>A: POST /api/documents (cookie + CSRF, groups)
+  A->>A: validate type, size and archive limits, sniff content
+  A->>S: PUT original (server-generated key, SHA-256)
+  A->>P: INSERT document, version, grants and job (one transaction)
+  A-->>B: 202 + job id
+  W->>P: claim job (FOR UPDATE SKIP LOCKED, lease token)
+  W->>S: GET original, verify SHA-256
+  W->>W: parse, OCR per page, chunk, extract, ground, validate
+  W->>P: chunks, tables, extraction (fenced by the lease)
+  W->>W: embed new or changed chunks
+  W->>P: chunk_embeddings, job completed
+  B->>A: GET /api/jobs/{id} (live stage)
+```
+
+### Data flow: question answering
+
+1. `POST /api/ask` → session → user (tenant, groups, role) → transaction-local RLS context.
+2. The **lexical branch** (`fts_search`) and the **semantic branch** (`semantic_search`) each run one SQL statement with the ACL subquery before `ORDER BY … LIMIT candidates` (default 50). RLS filters the same rows again.
+3. **RRF** (`fusion.reciprocal_rank_fusion`) fuses the two authorized rank lists (`k = 60`, weights 1 / 1), deduplicated by chunk ID.
+4. **Evidence policy** (`evidence.py`): exact identifiers must be present and the best sentence cosine must be ≥ 0.835 (dev-calibrated). Otherwise the answer is `no_evidence` / `identifier_not_found`: nothing is cited and nothing is sent to an LLM.
+5. **Answer** (`extractive.py`, `rag.py`): query-aware verbatim sentences per source with `[S#]`; with an API key, an LLM answer whose citations must all resolve to supplied sources, otherwise the model text is discarded.
+6. Audit event; response diagnostics (branch ranks, timings, RRF score labelled as a rank statistic).
+
+### Trade-offs at a glance
+
+| Decision | Benefit | Cost / risk | Evidence |
+|---|---|---|---|
+| ACL in every retrieval statement (ADR-001) | No unauthorized chunk reaches ranking, fusion, logs or prompts | No shared global index or cache | leak tests where forbidden chunks are the global #1 (mutation-checked) |
+| FORCE RLS as second enforcement (ADR-015) | A forgotten application filter cannot leak | +10–20 ms per retrieval query for group members; policy complexity | `test_rls_pg.py` mutation test; `eval/phase4/benchmarks.json` |
+| Exact vector scan, no ANN (ADR-005) | Exact recall for small tenants and groups | Linear cost; not for large corpora | ~20 ms warm at demo scale |
+| RRF fusion (ADR-009) | No cross-score calibration | Not significantly better than single modes on this corpus | paired bootstrap CIs contain 0 |
+| Abstention threshold (ADR-010) | 9/9 unanswerable test questions refused | 8/41 answerable ones also refused | `eval/reports/latest.json` |
+| BFF instead of SPA token handling (ADR-014) | XSS cannot steal tokens; immediate revocation | Session table and lookup per request | `test_auth_oidc.py`, real Keycloak tests |
+| Queue in PostgreSQL (ADR-016) | Atomic upload + job, no outbox, RLS-scoped jobs | Throughput bound to PostgreSQL | failure-injection drill 12/12 |
+| Rules-first extraction (ADR-013) | Deterministic, reproducible, offline | Misses novel labels | field F1 0.971 (test) |
+
+## Retrieval path (Phases 1–2)
+
+The section below describes the retrieval and answer path as designed in Phases 1–2. Since then, authentication moved to OIDC (ADR-014), originals to S3 and processing to workers (ADR-016), and RLS was added below the ACL (ADR-015).
 
 ## Context and goals
 
 Enterprise users need answers to business questions and the ability to inspect the original evidence, but must never receive information from documents outside their tenant and permitted group(s).
 
-### System boundaries
+### System boundaries (Phase 2 view)
 
 ```mermaid
 flowchart LR
@@ -46,7 +157,7 @@ Retrieval is implemented as an authorized `Document.id` subquery joined to `Chun
 
 ### Limitations
 
-This demo filters at the application SQL layer. It does not implement database Row-Level Security, external authorization services, hardened secret handling or a certified compliance boundary. Test the ACL invariants before any semantic-search migration.
+*(Phase 1–3 text; partly superseded: Phase 4 added PostgreSQL row-level security below this filter, ADR-015.)* This demo filters at the application SQL layer. It does not implement database Row-Level Security, external authorization services, hardened secret handling or a certified compliance boundary. Test the ACL invariants before any semantic-search migration.
 
 ## ADR-002: Inspectable lexical baseline first (default only on SQLite)
 
@@ -259,8 +370,8 @@ flowchart TD
 1. **v0.2c (done):** 100-question chunk-level evaluation, four-mode benchmark with CIs, RRF ablation, calibrated evidence-sufficiency policy, citation and security evaluation, CI gates, evaluation UI.
 1. **v0.2d (done):** query-aware extractive answers, sentence-level evidence policy, embedder comparison (e5-small kept). Deferred: query translation / expansion, LLM answer evaluation, chunk-size ablation.
 1. **v0.2.0 (release):** PDF/DOCX and upload tests, complete MVP end-to-end test, tested generation fallbacks, non-blocking upload, model warm-up, hybrid default on PostgreSQL.
-2. **v0.3 — document AI (implemented on the Phase 3 branch, not released):** layout-aware parsing, Tesseract OCR with deskew + table lattice, Pydantic schema extraction (rules + optional LLM), grounding, validation, human review, multi-document comparison, a 32-document evaluation with CI gates. Not done: layout-aware chunking (chunks still come from page text), Docling.
-3. **v0.4 — enterprise hardening (implemented on the Phase 4 branch, stacked on v0.3):** OIDC (BFF, Keycloak locally), PostgreSQL RLS, durable workers, S3 storage with versions / deletion / retention, presigned links, structured logs / metrics / traces, security, resilience and load testing ([enterprise-hardening.md](enterprise-hardening.md)). Not done: ANN indexes, reranking, per-tenant cost dashboards, HA / multi-region.
+2. **v0.3 — document AI (merged into `main` with PR #2; never tagged separately):** layout-aware parsing, Tesseract OCR with deskew + table lattice, Pydantic schema extraction (rules + optional LLM), grounding, validation, human review, multi-document comparison, a 32-document evaluation with CI gates. Not done: layout-aware chunking (chunks still come from page text), Docling.
+3. **v0.4 — enterprise hardening (merged into `main` with PR #2):** OIDC (BFF, Keycloak locally), PostgreSQL RLS, durable workers, S3 storage with versions / deletion / retention, presigned links, structured logs / metrics / traces, security, resilience and load testing ([enterprise-hardening.md](enterprise-hardening.md)). Not done: ANN indexes, reranking, per-tenant cost dashboards, HA / multi-region.
 4. **v1.0 — engineering evidence:** retrieval and answer eval suite, injection tests, load benchmarks, latency/cost dashboards, threat model and demo video.
 
 ## What to measure
