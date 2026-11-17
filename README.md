@@ -100,9 +100,9 @@ Detailed component and data-flow description, ADRs and trade-offs: [docs/archite
 
 ## Demonstration
 
-[![NEXUS AI product demo (2:20): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
+[![NEXUS AI product demo (2:21): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
 
-**[▶ Watch the 2:20 demo video (MP4, 1080p)](docs/videos/nexus-ai-demo.mp4)**: a real, automated browser
+**[▶ Watch the 2:21 demo video (MP4, 1080p)](docs/videos/nexus-ai-demo.mp4)**: a real, automated browser
 recording of the local Docker stack with synthetic data. A reviewer signs in through Keycloak SSO,
 uploads a Croatian invoice that a background worker parses and extracts with evidence, approves it,
 and sees business validation block a scanned (OCR) invoice. A Croatian question then finds the new

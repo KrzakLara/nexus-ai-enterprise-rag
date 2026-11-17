@@ -195,6 +195,7 @@ function App() {
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 5000); return () => window.clearTimeout(timer); }, [notice]);
 
   const persona = DEMO_USERS.find(p => p.email === user?.email);
+  const tenantName = user?.tenant === 'northstar' ? 'Northstar Inc.' : 'Otherco Ltd.';
   const filteredDocs = useMemo(() => docs.filter(doc =>
     `${doc.title} ${doc.filename} ${doc.groups.join(' ')}`.toLowerCase().includes(searchTerm.toLowerCase())),
     [docs, searchTerm]);
@@ -246,7 +247,7 @@ function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="sidebar-brand"><Logo /></div>
-      <div className="workspace-switch"><div className="workspace-icon">N</div><div><strong>{user.tenant === 'northstar' ? 'Northstar Inc.' : 'Otherco Ltd.'}</strong><small>Enterprise workspace</small></div><ChevronDown size={16} /></div>
+      <div className="workspace-switch"><div className="workspace-icon">{tenantName.charAt(0)}</div><div><strong>{tenantName}</strong><small>Enterprise workspace</small></div><ChevronDown size={16} /></div>
       <div className="nav-group-label">WORKSPACE</div>
       <nav className="nav-list" aria-label="Main navigation">
         <button onClick={() => setSection('assistant')} className={`nav-link ${section === 'assistant' ? 'active' : ''}`}><MessageSquareText size={18} /> AI Assistant <span className="nav-beta">AI</span></button>
@@ -264,7 +265,7 @@ function App() {
       </div>
     </aside>
     <main className="main-pane">
-      <header className="topbar"><div className="breadcrumbs">Northstar / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
+      <header className="topbar"><div className="breadcrumbs">{tenantName.split(' ')[0]} / <strong>{section === 'assistant' ? 'AI Assistant' : section === 'documents' ? 'Document Library' : section === 'evaluation' ? 'Evaluation' : section === 'intelligence' ? 'Document Intelligence' : 'Access & Audit'}</strong></div>
         <div className="topbar-right"><span className="environment"><span className="small-pulse" />{config?.auth_mode === 'oidc' ? 'SSO' : 'Demo environment'}</span><span className="topbar-separator" /><span className={`avatar tiny ${persona?.color ?? 'blue'}`}>{persona?.initials ?? 'U'}</span></div></header>
       {section === 'assistant' && <div className="assistant-layout">
         <div className="assistant-main">
