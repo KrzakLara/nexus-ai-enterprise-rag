@@ -114,7 +114,11 @@ Run the scripts from a Python environment with the project dependencies (`uv syn
 
 ## 7. Video script (2–3 minutes)
 
-No demo video has been recorded yet. Suggested script, using the steps above:
+A recorded demo is available: [`docs/videos/nexus-ai-demo.mp4`](videos/nexus-ai-demo.mp4)
+(2:20, 1920 × 1080, H.264, no audio; on-screen captions). It was recorded on 2026-11-17 by
+[`scripts/demo_video/`](../scripts/demo_video/) (Playwright + Chrome DevTools screencast against a
+fresh stack, edited with FFmpeg) and follows steps 1, 3, 6–11, 5, 13, 15 and 16 above. The original
+suggested script, using the steps above:
 
 | Time | Screen | Narration (suggested) |
 |---|---|---|

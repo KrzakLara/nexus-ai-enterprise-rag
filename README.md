@@ -100,6 +100,16 @@ Detailed component and data-flow description, ADRs and trade-offs: [docs/archite
 
 ## Demonstration
 
+[![NEXUS AI product demo (2:20): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
+
+**[▶ Watch the 2:20 demo video (MP4, 1080p)](docs/videos/nexus-ai-demo.mp4)**: a real, automated browser
+recording of the local Docker stack with synthetic data. A reviewer signs in through Keycloak SSO,
+uploads a Croatian invoice that a background worker parses and extracts with evidence, approves it,
+and sees business validation block a scanned (OCR) invoice. A Croatian question then finds the new
+invoice with hybrid search and verbatim citations, another tenant's data stays invisible to both the
+Northstar and the Otherco user, and the evaluation page and Grafana close the tour. Waiting time is
+removed with visible cuts; nothing is mocked. Reproduce it with [`scripts/demo_video/`](scripts/demo_video/).
+
 Real screenshots from the local Docker stack (Keycloak SSO, queue mode, MinIO, synthetic data),
 captured with a headless browser on 2026-11-15 and 2026-11-17.
 
@@ -111,8 +121,7 @@ captured with a headless browser on 2026-11-15 and 2026-11-17.
 | **Background processing status** | **Grafana operations dashboard (k6 load window)** |
 | ![Library with live processing stages](docs/images/ui-library-status.png) | ![Grafana dashboard fed by the stack's Prometheus](docs/images/grafana-nexus-operations.png) |
 
-Step-by-step walk-through, demo accounts and a 2–3 minute video script: **[docs/DEMO.md](docs/DEMO.md)**.
-No demo video has been recorded yet.
+Step-by-step walk-through and demo accounts: **[docs/DEMO.md](docs/DEMO.md)**.
 
 ## Evaluation results
 
