@@ -13,7 +13,7 @@
 ![Keycloak OIDC](https://img.shields.io/badge/OIDC-Keycloak-4D4D4D?logo=keycloak&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-[Architecture](docs/architecture.md) · [Demo](docs/DEMO.md) · [Evaluation](docs/EVALUATION_SUMMARY.md) · [Case study](docs/CASE_STUDY.md) · [Security](docs/security-test-results.md) · [Technical reference](docs/TECHNICAL_REFERENCE.md)
+[Watch the demo](#watch-the-demo) · [Architecture](docs/architecture.md) · [Demo guide](docs/DEMO.md) · [Evaluation](docs/EVALUATION_SUMMARY.md) · [Case study](docs/CASE_STUDY.md) · [Security](docs/security-test-results.md) · [Technical reference](docs/TECHNICAL_REFERENCE.md)
 
 </div>
 
@@ -71,6 +71,32 @@ Each feature below is implemented on `main` and covered by tests; links point to
 | **Observability** | Redacted JSON logs, low-cardinality Prometheus metrics, OpenTelemetry traces that cross the queue (API → worker), provisioned Grafana dashboard, alert rules ([observability.md](docs/observability.md)) |
 | **Verification** | 567 automated tests, retrieval and extraction CI gates, security regression suite, Docker E2E, failure injection, backup / restore drill, k6 load profiles |
 
+## Watch the Demo
+
+<div align="center">
+
+[![NEXUS AI demo: real browser recording of the running stack (2:25, Full HD)](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
+
+**[▶ Watch the NEXUS AI Demo (2:25, Full HD)](docs/videos/nexus-ai-demo.mp4)**
+
+</div>
+
+A real, automated browser recording of the running Docker stack with synthetic English documents.
+Nothing is mocked; waiting time is removed with visible cuts. The demo shows:
+
+- **Keycloak SSO**: OpenID Connect login through a backend-for-frontend.
+- **Invoice extraction and OCR**: a text PDF and a scanned invoice are processed by a background
+  worker into structured fields, each linked to its evidence in the document.
+- **Human review**: the reviewer approves one invoice; business validation blocks the scanned one
+  because its total does not add up.
+- **Hybrid RAG with citations**: PostgreSQL full-text + pgvector search fused with RRF; extractive,
+  source-grounded answers that quote the documents verbatim with `[S#]` citations.
+- **Tenant isolation**: another tenant's data is invisible, both to the Northstar user and to the
+  Otherco user.
+- **Grafana**: live API, queue and worker metrics, after the stored evaluation results.
+
+How it was recorded: [`scripts/demo_video/`](scripts/demo_video/).
+
 ## Architecture
 
 ```mermaid
@@ -98,18 +124,7 @@ flowchart LR
 
 Detailed component and data-flow description, ADRs and trade-offs: [docs/architecture.md](docs/architecture.md).
 
-## Demonstration
-
-[![NEXUS AI product demo (2:25): real browser recording of the running stack](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
-
-**[▶ Watch the 2:25 demo video (MP4, 1080p, English)](docs/videos/nexus-ai-demo.mp4)**: a real, automated
-browser recording of the local Docker stack with synthetic English documents. A reviewer signs in
-through Keycloak SSO and uploads two invoices: a text PDF that a background worker parses and extracts
-with evidence, and a scanned one that needs OCR. The reviewer approves the first; business validation
-blocks the second because its total does not add up. An English question then finds the new invoice
-with hybrid search and an extractive, source-grounded answer with verbatim citations. Another tenant's
-data stays invisible to both the Northstar and the Otherco user, and the evaluation page and Grafana
-close the tour. Waiting time is removed with visible cuts; nothing is mocked. Reproduce it with [`scripts/demo_video/`](scripts/demo_video/).
+## Screenshots
 
 Real screenshots from the local Docker stack (Keycloak SSO, queue mode, MinIO, synthetic data),
 captured with a headless browser on 2026-11-15 and 2026-11-17.
