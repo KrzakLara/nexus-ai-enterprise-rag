@@ -2,7 +2,30 @@
 
 All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). NEXUS AI is a **local demo**. No version is production-ready.
 
-## [0.4.0] - unreleased (branch `feat/phase4-enterprise-hardening`, stacked on 0.3.0) - Phase 4 enterprise hardening
+## [0.4.0] - prepared, not yet tagged - Phases 1–4 on `main` + Phase 5 portfolio release
+
+Release notes: [docs/releases/v0.4.0.md](docs/releases/v0.4.0.md). Phases 3 and 4 reached `main`
+through PR #2. The tag and GitHub Release are created only after the owner's approval.
+
+### Phase 5: portfolio release (documentation and metadata only)
+- New README as a project landing page: problem, solution, verified features, architecture
+  diagram, screenshots, evaluation highlights with provenance, Docker quick start, security,
+  engineering decisions, limitations. The generated benchmark block is unchanged.
+- `docs/architecture.md`: verified v0.4.0 system overview (components, ingestion and question
+  flows, trade-off table); early ADR text marked where Phase 4 superseded it.
+- `docs/DEMO.md` (renamed from `docs/demo.md` and rewritten for the OIDC / queue / MinIO stack):
+  prerequisites, accounts, 16 steps with observed results, troubleshooting, a 2–3 minute video
+  script. No video has been recorded.
+- `docs/EVALUATION_SUMMARY.md`, `docs/CASE_STUDY.md`, `docs/PORTFOLIO.md`,
+  `docs/TECHNICAL_REFERENCE.md` (the former detailed README body), `docs/releases/v0.4.0.md`.
+- Five screenshots captured from the running stack (`docs/images/ui-assistant-*.png`,
+  `ui-evaluation.png`, `ui-review-*.png`).
+- Re-verification from `main`: Docker quick start from scratch, Docker E2E 22/22
+  (`eval/phase5/e2e-phase5-main.json`).
+- Package metadata 0.3.0 → 0.4.0 in `pyproject.toml`, `uv.lock`, `frontend/package.json` and
+  `frontend/package-lock.json`, matching the API and the UI.
+
+### Phase 4: enterprise hardening
 
 Overview: [docs/enterprise-hardening.md](docs/enterprise-hardening.md). Measured results:
 [docs/security-test-results.md](docs/security-test-results.md), [docs/performance-benchmarks.md](docs/performance-benchmarks.md).
