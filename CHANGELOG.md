@@ -2,10 +2,27 @@
 
 All notable changes to NEXUS AI. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). NEXUS AI is a **local demo**. No version is production-ready.
 
-## [0.4.0] - prepared, not yet tagged - Phases 1–4 on `main` + Phase 5 portfolio release
+## [0.4.0] - prepared for tagging - Phases 1–4 on `main` + Phase 5 portfolio release
 
 Release notes: [docs/releases/v0.4.0.md](docs/releases/v0.4.0.md). Phases 3 and 4 reached `main`
-through PR #2. The tag and GitHub Release are created only after the owner's approval.
+through PR #2, the Phase 5 documentation through PR #3. The `v0.4.0` tag and GitHub Release are
+created from `main` after the owner's approval.
+
+### Phase 5: recorded demo and portfolio polish
+- **Recorded English product demo** `docs/videos/nexus-ai-demo.mp4` (2:25, 1920 × 1080, H.264,
+  no audio, on-screen captions) and thumbnail `docs/images/nexus-ai-demo-thumbnail.png`: an
+  automated browser recording of the running stack (Keycloak SSO, background ingestion, invoice
+  extraction and OCR, human review with a validation failure, hybrid RAG with citations, tenant
+  isolation, evaluation, Grafana). Reproducible with `scripts/demo_video/`; uses two synthetic
+  English invoices in `demo_documents/video/` that are not part of the frozen evaluation data.
+- README: prominent *Watch the Demo* section, verified headline metrics below the subtitle,
+  *Engineering Ownership* section; the authorization and extraction rows now state their exact
+  scope (what was counted, test split vs. all documents). No evaluation result changed.
+
+### Fixed
+- Frontend: the breadcrumb and workspace icon were hardcoded to the Northstar tenant; they now
+  follow the signed-in tenant, and an unknown tenant id is shown as itself
+  (`frontend/src/tenant.ts`, regression test `frontend/src/tenant.test.ts`, run by `npm test` in CI).
 
 ### Phase 5: portfolio release (documentation and metadata only)
 - New README as a project landing page: problem, solution, verified features, architecture
@@ -15,7 +32,7 @@ through PR #2. The tag and GitHub Release are created only after the owner's app
   flows, trade-off table); early ADR text marked where Phase 4 superseded it.
 - `docs/DEMO.md` (renamed from `docs/demo.md` and rewritten for the OIDC / queue / MinIO stack):
   prerequisites, accounts, 16 steps with observed results, troubleshooting, a 2–3 minute video
-  script. No video has been recorded.
+  script (the video was recorded afterwards; see above).
 - `docs/EVALUATION_SUMMARY.md`, `docs/CASE_STUDY.md`, `docs/PORTFOLIO.md`,
   `docs/TECHNICAL_REFERENCE.md` (the former detailed README body), `docs/releases/v0.4.0.md`.
 - Five screenshots captured from the running stack (`docs/images/ui-assistant-*.png`,

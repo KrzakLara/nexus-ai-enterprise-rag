@@ -4,6 +4,8 @@
 
 **Permission-aware hybrid retrieval and evidence-grounded document extraction, enforced by PostgreSQL row-level security and measured with held-out evaluation.**
 
+**[0 authorization violations](docs/EVALUATION_SUMMARY.md)** in three security test campaigns · **[Extraction F1 0.971](docs/EVALUATION_SUMMARY.md#document-intelligence-phase-3)** on a held-out test split · **[567 automated tests](docs/EVALUATION_SUMMARY.md#enterprise-hardening-phase-4)** in CI · **[Docker E2E 22/22](eval/phase5/e2e-phase5-main.json)**
+
 [![Quality checks](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KrzakLara/nexus-ai-enterprise-rag/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -22,7 +24,7 @@ and contracts into reviewed, structured data. Every answer quotes its sources, e
 field points to its evidence, and no user can retrieve a document outside their tenant and groups,
 which is enforced both in the retrieval SQL and by PostgreSQL row-level security.
 
-> **Status:** v0.4.0 (Phases 1–4) is merged into `main`; CI is green. It is a **portfolio-grade
+> **Status:** v0.4.0: Phases 1–4 (application), Phase 5 (documentation, recorded demo). It is a **portfolio-grade
 > system with synthetic data**: hardened and tested, but not externally penetration-tested,
 > certified or operated in production. See [Limitations](#limitations).
 
@@ -75,9 +77,11 @@ Each feature below is implemented on `main` and covered by tests; links point to
 
 <div align="center">
 
-[![NEXUS AI demo: real browser recording of the running stack (2:25, Full HD)](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4)
+[![NEXUS AI demo: real browser recording of the running stack (2:25, Full HD)](docs/images/nexus-ai-demo-thumbnail.png)](docs/videos/nexus-ai-demo.mp4?raw=true)
 
-**[▶ Watch the NEXUS AI Demo (2:25, Full HD)](docs/videos/nexus-ai-demo.mp4)**
+**[▶ Watch the NEXUS AI Demo (2:25, Full HD)](docs/videos/nexus-ai-demo.mp4?raw=true)**
+
+<sub>English · 1920 × 1080 · H.264 MP4 · 11.6 MB · no audio, on-screen captions</sub>
 
 </div>
 
@@ -145,8 +149,8 @@ Strongest verified results (methodology, versions and caveats: [docs/EVALUATION_
 
 | What | Result | Measured on |
 |---|---|---|
-| Authorization violations | **0** — 400 retrieval runs, 400 API responses, 396 LLM prompts (Phase 2); 1,946 document-intelligence requests (Phase 3); 4,048 requests under k6 load (Phase 4) | synthetic two-tenant corpora |
-| Extraction field-level F1 (held-out test) | **0.971** (all documents 0.985; 376 field slots; 0 of 9 absent fields invented) | 32 synthetic contracts / invoices incl. 7 scans, offline rules provider |
+| Authorization violations | **0** in three separate campaigns: Phase 2 evaluation (100 questions × 4 retrieval modes, each checked at three layers: 400 retrieval runs, 400 API responses, 396 LLM prompts); Phase 3 access matrix (1,946 requests, 7 personas × 32 documents); Phase 4 k6 load (4,048 HTTP requests incl. login traffic; answers, listings and cross-tenant probes checked) | synthetic two-tenant corpora |
+| Extraction field-level F1 (held-out test) | **0.971** on the test split (14 documents, 163 field slots, precision 1.000, recall 0.943); all 32 documents 0.985 (376 slots); 0 of 9 absent fields invented | 32 synthetic contracts / invoices incl. 7 scans, dataset v1.1, offline `rules_v1` provider |
 | OCR (10 scanned pages) | CER **0.0015**, key-token recall 0.992 | Tesseract 5.5.0 with deskew + lattice tables |
 | Abstention on unanswerable questions | **9/9** refused; 8/41 answerable questions also refused (documented trade-off) | 100-question set, test split |
 | Docker end-to-end | **22/22** (SSO → upload → worker → review → RLS → denial → trace → purge → logout) | fresh stack from `main`, 2026-11-17 |
@@ -250,6 +254,23 @@ Threat model and results: [docs/security.md](docs/security.md), [docs/security-t
 | Modular monolith | One deployable, one ACL and one audit trail; workers scale separately via `--scale worker=N` |
 
 More: [docs/architecture.md](docs/architecture.md) (ADRs) and [docs/CASE_STUDY.md](docs/CASE_STUDY.md).
+
+## Engineering Ownership
+
+NEXUS AI is a solo portfolio project by Lara Krzak, who owned it end to end: scope, architecture,
+implementation, integration, evaluation and release. AI-assisted coding tools were used during
+development; requirements, design decisions, acceptance criteria and every merge into `main`
+remained the author's responsibility, and every change passes the same CI gates.
+
+| Area | Responsibility | Evidence |
+|---|---|---|
+| Architecture and technical decisions | Modular monolith with separately scaled workers, BFF authentication, PostgreSQL as database, vector store and job queue; decisions recorded as ADRs with their trade-offs | [architecture.md](docs/architecture.md), [Engineering decisions](#engineering-decisions) |
+| Backend and AI integration | FastAPI services, embedding pipeline, extractive answering with citation validation, optional LLM paths with explicit fallback | [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) |
+| Retrieval, grounding and evaluation | Hybrid FTS + pgvector retrieval with RRF, dev-calibrated abstention, held-out evaluation sets, CI quality gates; negative results published | [EVALUATION_SUMMARY.md](docs/EVALUATION_SUMMARY.md), [evaluation.md](docs/evaluation.md) |
+| Security and tenant isolation | ACL inside every retrieval statement, PostgreSQL FORCE RLS as a second layer, threat model, security regression suite | [security.md](docs/security.md), [postgresql-rls.md](docs/postgresql-rls.md) |
+| Document processing and OCR | Layout-aware parsing, Tesseract OCR with deskew and table reconstruction, evidence-grounded extraction, validation and human review | [document-intelligence.md](docs/document-intelligence.md), [human-review.md](docs/human-review.md) |
+| Test strategy and CI/CD | 567 automated tests against real PostgreSQL, MinIO and Keycloak, coverage floor, Docker E2E, failure injection, backup / restore drill, secret scanning | [CI workflow](.github/workflows/ci.yml), [security-test-results.md](docs/security-test-results.md) |
+| Enterprise trade-offs | Exact vector scan over ANN, rules before LLM extraction, RLS overhead measured and accepted, limitations stated rather than hidden | [CASE_STUDY.md](docs/CASE_STUDY.md), [Limitations](#limitations) |
 
 ## Limitations
 
