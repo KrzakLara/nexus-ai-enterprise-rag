@@ -27,3 +27,6 @@ uploads/
 backups/
 eval/phase4/load/.k6-*/
 frontend/dist/
+
+# Demo video recording scratch output (scripts/demo_video)
+scripts/demo_video/out/

@@ -52,7 +52,7 @@ Tesseract 5.5.0 (`eng+hrv`).
 
 | Metric | Result |
 |---|---|
-| Field-level F1 (all / dev / **test**) | 0.985 / 0.995 / **0.971** (376 field slots; precision 0.997, recall 0.973, exact match 0.973) |
+| Field-level F1 (all / dev / **test**) | 0.985 / 0.995 / **0.971** (all 32 documents: 376 field slots, precision 0.997, recall 0.973, exact match 0.973; test split, 14 documents: 163 slots, precision 1.000, recall 0.943, exact match 0.945) |
 | Field F1 on scanned PDFs (OCR path) | 0.983 |
 | Values invented for absent fields | 0 of 9 |
 | Evidence supports the value / on the right page | 100 % / 99.6 % of 533 values |

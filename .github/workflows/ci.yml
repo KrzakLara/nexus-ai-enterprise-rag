@@ -116,6 +116,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - working-directory: frontend
         run: npm run build   # tsc -b (strict type check) + vite production build
+      - working-directory: frontend
+        run: npm test        # node:test unit tests (src/*.test.ts, Node type stripping)
 
   secrets:
     # Secret scan of the full git history (triaged false positives: .gitleaksignore).
